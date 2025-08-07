@@ -19,6 +19,25 @@ This repository includes:
 - `papers/`: published papers and whitepapers on UDMM
 - `examples/`: simulated scenarios using simplified agents
 - `docs/`: explanatory documents and extended discussions
+##Getting Started
+This quick guide will walk you through how to run the UDMM agent simulation on your local machine.
+Prerequisites
+ * Python: You must have Python 3 installed on your system.
+Steps to Run
+ * Clone the Repository:
+   Open your terminal or command prompt and execute the following command to download the project files:
+   git clone https://github.com/midroos/UDMM-Cognitive-Framework.git
+
+ * Navigate to the Project Folder:
+   Change your current directory to the newly created project folder:
+   cd UDMM-Cognitive-Framework
+
+ * Run the Simulation:
+   Now, execute the main simulation file:
+   python main.py
+
+What to Expect
+The simulation will start, and you will see output in your terminal displaying the agent's actions, its affective state (e.g., "Curious" or "Anxious"), and its level of uncertainty (Free Energy) at each step. This provides a practical, real-time look into how the model works
 
 ## Related Works
 
