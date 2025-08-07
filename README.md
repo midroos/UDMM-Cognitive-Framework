@@ -19,7 +19,9 @@ This repository includes:
 - `papers/`: published papers and whitepapers on UDMM
 - `examples/`: simulated scenarios using simplified agents
 - `docs/`: explanatory documents and extended discussions
+
 ##Getting Started
+
 This quick guide will walk you through how to run the UDMM agent simulation on your local machine.
 Prerequisites
  * Python: You must have Python 3 installed on your system.
