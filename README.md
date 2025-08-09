@@ -1,61 +1,85 @@
-# UDMM Cognitive Framework
+# 🧠 UDMM Cognitive Framework - Version 2
+*A Unified Dynamic Model of Mind for Artificial Agents*
 
-A comprehensive cognitive framework based on the Unified Dynamic Model of Mind (UDMM), designed to simulate perception, intention, and prediction in an evolving world. This repository includes conceptual models, mathematical formulations, and potential applications in artificial intelligence and cognitive sciences.
+[![ORCID](https://img.shields.io/badge/ORCID-0009--0005--1948--402X-green)](https://orcid.org/0009-0005-1948-402X)
+[![GitHub Repo](https://img.shields.io/badge/GitHub-UDMM--Cognitive--Framework-blue?logo=github)](https://github.com/midroos/UDMM-Cognitive-Framework)
 
-## Overview
+---
 
-The UDMM (Unified Dynamic Model of Mind) presents a unified structure for understanding cognition as a dynamic, predictive, and interaction-based process. It simulates the mind as a generative model constantly synchronizing with sensory input, minimizing informational divergence, and adjusting its internal representations through prediction error.
+## 📖 Overview
+The **UDMM Cognitive Framework** is a novel approach to building artificial agents inspired by the **Unified Dynamic Model of Mind (UDMM)**.
+It frames cognition as a dynamic, predictive, and interactive process between an agent's internal generative models and the external environment.
 
-Key concepts:
-- **Virtual Attractor**: The implicit goal state the system tends toward.
-- **Saturated World**: The richly inferred representation of the world shaped by intent and past interaction.
-- **KL Divergence**: Used to measure mismatch between expected and received input.
+**What's New in Version 2 (V2)?**
+In this version, we have transformed the agent from a purely reactive entity into a **learning and adaptive system**. Key updates include:
 
-## Structure
+-   **Upgraded Memory:** The agent now stores complete experiences (state, action, reward).
+-   **Functional Learning System:** The agent uses its memory to discover which actions lead to rewards.
+-   **Intelligent Decision-Making:** Decisions are no longer random but are guided by the agent's learned knowledge.
+-   **More Accurate Predictions:** The prediction module now uses learned information to make more informed predictions about the future.
 
-This repository includes:
-- `model/`: core components and diagrams of the UDMM
-- `math/`: draft equations for active inference and divergence reduction
-- `papers/`: published papers and whitepapers on UDMM
-- `examples/`: simulated scenarios using simplified agents
-- `docs/`: explanatory documents and extended discussions
+---
 
-##Getting Started
+## 🧩 Architecture
+The UDMM architecture is divided into **functional modules**, each representing a core cognitive capability:
 
-This quick guide will walk you through how to run the UDMM agent simulation on your local machine.
-Prerequisites
- * Python: You must have Python 3 installed on your system.
-Steps to Run
- * Clone the Repository:
-   Open your terminal or command prompt and execute the following command to download the project files:
-   git clone https://github.com/midroos/UDMM-Cognitive-Framework.git
+| Module | Function |
+|--------|----------|
+| **Perception** | Gathers and interprets sensory inputs |
+| **Prediction** | Generates future states and evaluates possible worlds based on learning |
+| **Memory** | Stores complete past experiences (state, action, reward) |
+| **Learning** | Analyzes experiences to update the agent's internal model |
+| **Emotion** | Simulates affective states based on prediction errors |
+| **Intention** | Sets and updates goals |
+| **Decision Making** | Selects the optimal action based on learning and prediction |
+| **Action** | Executes actions in the environment |
+| **World Simulator** | Generates and tests possible worlds based on agent and environment dynamics |
+| **Time Representation** | Synchronizes the model with reality, allows for recall and forecasting |
 
- * Navigate to the Project Folder:
-   Change your current directory to the newly created project folder:
-   cd UDMM-Cognitive-Framework
+---
 
- * Run the Simulation:
-   Now, execute the main simulation file:
-   python main.py
+## 📜 Core Principles
+1.  **Predictive Processing** – The agent constantly compares its predicted and actual sensory states.
+2.  **Possible Worlds** – The agent simulates multiple potential futures before acting.
+3.  **Error Minimization** – Decisions aim to reduce uncertainty and surprise.
+4.  **Continuous Synchronization** – The agent keeps its internal model aligned with the real environment.
 
-What to Expect
-The simulation will start, and you will see output in your terminal displaying the agent's actions, its affective state (e.g., "Curious" or "Anxious"), and its level of uncertainty (Free Energy) at each step. This provides a practical, real-time look into how the model works
+---
 
-## Related Works
+## 💻 Integrated Code
+This project provides a simple, self-contained implementation of the UDMM agent. The code is structured into modular classes, allowing you to easily understand and expand on the core concepts.
 
-- [Zenodo Publication: "The Saturated World and Virtual Attractor"](https://doi.org/10.5281/zenodo.15685254)
-- [Academia.edu: UDMM Theoretical Papers](https://independent.academia.edu/MohamedAidaros)
+**File: `udmm_agent.py`**
+*(The full code for the agent and its modules is here)*
 
-## Author
+**File: `main.py`**
+*(This file runs the simulation and orchestrates the agent's interaction with the environment)*
 
-**Mohamed Ahmed Aidaros**  
-Researcher in cognitive psychology and theoretical neuroscience  
-Email: `midroos@gmail.com`
+---
 
-## License
+## ▶️ Getting Started
+This guide will walk you through how to run the UDMM agent simulation on Google Colab.
 
-This project is licensed under the [Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/).
+**Prerequisites**
+You will need to have **Python 3** and **numpy** installed.
 
-You are free to share and adapt the material for non-commercial purposes, as long as appropriate credit is given. Commercial use is **not** permitted without explicit permission.
+1.  **Open Google Colab**
+    Navigate to: [https://colab.research.google.com/](https://colab.research.google.com/)
+2.  **Create a new notebook**
+    Click `File` then `New notebook`.
+3.  **Execute the following commands in a single cell:**
+    ```python
+    # Install the necessary library
+    !pip install numpy
+    # Clone the project from GitHub
+    !git clone [https://github.com/midroos/UDMM-Cognitive-Framework.git](https://github.com/midroos/UDMM-Cognitive-Framework.git)
+    # Change directory to the project folder
+    %cd UDMM-Cognitive-Framework
+    # Ensure you are on the correct branch
+    !git checkout v2-development
+    # Run the simulation
+    !python main.py
+    ```
 
-**الرخصة**: هذا المشروع مرخص بموجب رخصة [Creative Commons Attribution-NonCommercial 4.0 الدولية](https://creativecommons.org/licenses/by-nc/4.0/deed.ar). يمكنك استخدام ومشاركة وتعديل الكود بحرية لأغراض غير تجارية، بشرط نَسب العمل لصاحبه. ولا يُسمح بالاستخدام التجاري دون إذن صريح.
+**What to expect?**
+The simulation will begin and output a visual grid representing the agent's world. You will see the agent move, its emotional state and reward updated at each step. You will notice how the agent's behavior changes over time to become more efficient at reaching its goal, demonstrating how the UDMM architecture drives behavior and adaptation.

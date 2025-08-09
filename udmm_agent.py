@@ -1,42 +1,206 @@
-# udmm_agent.py
-from generative_model import GenerativeModelHierarchy
-from active_inference import ActiveInferenceEngine
-from perception_memory import PerceptionLayer, MemoryTrace
+import numpy as np
+import random
 
-class Agent:
-    def __init__(self, name, age, high_level_intent):
-        self.name = name
-        self.age = age
-        self.generative_model = GenerativeModelHierarchy(high_level_intent)
-        self.active_inference_engine = ActiveInferenceEngine()
-        self.perception = PerceptionLayer()
-        self.memory = MemoryTrace()
-        self.time = 0
+# ====== Modules ======
+class Perception:
+    def perceive(self, observation):
+        agent_pos = observation
+        return agent_pos[0] * 8 + agent_pos[1]
 
-    def run_simulation(self, current_env_data):
-        self.time += 1
+class Prediction:
+    def __init__(self):
+        self.learning_model = None
+    
+    def set_learning_model(self, model):
+        self.learning_model = model
+
+    def predict(self, state):
+        possible_worlds = []
         
-        predictions = self.generative_model.generate_predictions(self.memory.get_recent_data())
-
-        self.perception.update_perception(current_env_data)
-
-        free_energy, errors = self.active_inference_engine.compute_free_energy(predictions, self.perception.get_data())
+        # If the agent has learned something for this state, use that knowledge
+        if self.learning_model is not None and state in self.learning_model.action_weights:
+            learned_actions = self.learning_model.action_weights[state]
+            
+            if learned_actions:
+                best_action = max(learned_actions, key=learned_actions.get)
+                # Predict that the most rewarding action will lead to a good world
+                predicted_world = state + best_action # A simple way to model this
+                possible_worlds.append(predicted_world)
         
-        affect = self.active_inference_engine.generate_affect(errors)
-        self.generative_model.update_self_representation({"current_affect": affect})
+        # Add some random predictions to allow for exploration
+        for _ in range(2):
+            possible_worlds.append(state + random.randint(-1, 1))
+            
+        return possible_worlds
 
-        action = self.active_inference_engine.select_action_to_minimize_surprise(predictions, errors)
+class Memory:
+    def __init__(self):
+        self.past_experiences = []
+    
+    def store(self, state, action, reward):
+        self.past_experiences.append((state, action, reward))
 
-        self.generative_model.update_with_errors(errors)
+    def recall(self, steps_back=1):
+        if len(self.past_experiences) >= steps_back:
+            return self.past_experiences[-steps_back]
+        return None
 
-        self.memory.store(self.time, self.perception.get_data(), predictions, errors, action, affect)
-
-        self.perform_action(action)
-
-        print(f"[{self.time}] Action: {action}, Affect: {affect}, Free Energy: {free_energy:.2f}")
-
-    def perform_action(self, action):
-        print(f"Performing action: {action}")
+class Learning:
+    def __init__(self):
+        self.action_weights = {}
+    
+    def update_model(self, experience):
+        state, action, reward = experience
         
-    def get_self_data(self):
-        return {"health": 100, "energy": 80}
+        if reward > 0:
+            if state not in self.action_weights:
+                self.action_weights[state] = {}
+            if action not in self.action_weights[state]:
+                self.action_weights[state][action] = 0
+            self.action_weights[state][action] += 1
+
+class Emotion:
+    def __init__(self):
+        self.state = "Neutral"
+    def update(self, prediction_error):
+        if prediction_error > 2:
+            self.state = "Anxious"
+        elif prediction_error > 0:
+            self.state = "Curious"
+        else:
+            self.state = "Content"
+        return self.state
+
+class Intention:
+    def __init__(self):
+        self.goal = None
+    def set_goal(self, goal):
+        self.goal = goal
+    def get_goal(self):
+        return self.goal
+
+class DecisionMaking:
+    def __init__(self):
+        self.learning_model = None
+    
+    def set_learning_model(self, model):
+        self.learning_model = model
+    
+    def decide(self, possible_worlds, goal, current_state):
+        if self.learning_model is not None and current_state in self.learning_model.action_weights:
+            learned_actions = self.learning_model.action_weights[current_state]
+            
+            if learned_actions:
+                best_action = max(learned_actions, key=learned_actions.get)
+                print(f"Agent decided based on past reward: {best_action}")
+                return best_action
+
+        if goal is not None:
+            return min(possible_worlds, key=lambda w: abs(w - goal))
+        
+        return random.randint(0, 3)
+
+class Action:
+    def execute(self, choice, environment):
+        action = choice
+        environment.update_state(action)
+        reward = environment.check_goal_status()
+        return reward
+
+class WorldSimulator:
+    def simulate(self, current_state):
+        return [current_state + random.randint(-2, 2) for _ in range(5)]
+
+class TimeRepresentation:
+    def __init__(self):
+        self.current_time = 0
+    def tick(self):
+        self.current_time += 1
+    def get_time(self):
+        return self.current_time
+
+# ====== Environment ======
+class Environment:
+    def __init__(self, size=8):
+        self.size = size
+        self.grid = np.zeros((size, size))
+        self.agent_pos = (0, 0)
+        self.goal_pos = (random.randint(1, size-1), random.randint(1, size-1))
+        self.grid[self.goal_pos] = 1
+        
+    def get_state(self):
+        return self.agent_pos
+
+    def update_state(self, action):
+        x, y = self.agent_pos
+        
+        if action == 0: x = max(0, x - 1)
+        elif action == 1: x = min(self.size - 1, x + 1)
+        elif action == 2: y = max(0, y - 1)
+        elif action == 3: y = min(self.size - 1, y + 1)
+        
+        self.agent_pos = (x, y)
+
+    def check_goal_status(self):
+        if self.agent_pos == self.goal_pos:
+            return 1
+        return 0
+
+    def reset(self):
+        self.agent_pos = (0, 0)
+        self.goal_pos = (random.randint(1, self.size-1), random.randint(1, self.size-1))
+        self.grid = np.zeros((self.size, self.size))
+        self.grid[self.goal_pos] = 1
+        
+    def render(self):
+        display_grid = np.copy(self.grid)
+        display_grid[self.agent_pos] = 2
+        
+        for row in display_grid:
+            print(" ".join(["." if cell == 0 else "G" if cell == 1 else "A" for cell in row]))
+        print("-" * (self.size * 2))
+
+# ====== Agent ======
+class UDMM_Agent:
+    def __init__(self):
+        self.perception = Perception()
+        self.prediction = Prediction()
+        self.memory = Memory()
+        self.learning = Learning()
+        self.emotion = Emotion()
+        self.intention = Intention()
+        self.decision = DecisionMaking()
+        self.action = Action()
+        self.world_simulator = WorldSimulator()
+        self.time = TimeRepresentation()
+        
+        self.decision.set_learning_model(self.learning)
+        self.prediction.set_learning_model(self.learning) # Connect learning to prediction here
+
+    def step(self, environment):
+        current_state_pos = environment.get_state()
+        current_state = self.perception.perceive(current_state_pos)
+        
+        possible_futures = self.prediction.predict(current_state)
+        simulated_worlds = self.world_simulator.simulate(current_state)
+        
+        recalled_state = self.memory.recall()
+        if recalled_state is not None:
+            prediction_error = abs(current_state - recalled_state[0])
+        else:
+            prediction_error = 0
+        
+        emotion_state = self.emotion.update(prediction_error)
+        
+        choice = self.decision.decide(possible_futures, self.intention.get_goal(), current_state)
+        
+        reward = self.action.execute(choice, environment)
+        
+        experience = (current_state, choice, reward)
+        self.memory.store(current_state, choice, reward)
+        
+        self.learning.update_model(experience)
+        
+        self.time.tick()
+        
+        return reward, emotion_state, environment.get_state()
