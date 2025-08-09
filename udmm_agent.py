@@ -9,10 +9,29 @@ class Perception:
 
 class Prediction:
     def __init__(self):
-        self.possible_worlds = []
+        self.learning_model = None
+    
+    def set_learning_model(self, model):
+        self.learning_model = model
+
     def predict(self, state):
-        self.possible_worlds = [state + random.randint(-1, 1) for _ in range(3)]
-        return self.possible_worlds
+        possible_worlds = []
+        
+        # If the agent has learned something for this state, use that knowledge
+        if self.learning_model is not None and state in self.learning_model.action_weights:
+            learned_actions = self.learning_model.action_weights[state]
+            
+            if learned_actions:
+                best_action = max(learned_actions, key=learned_actions.get)
+                # Predict that the most rewarding action will lead to a good world
+                predicted_world = state + best_action # A simple way to model this
+                possible_worlds.append(predicted_world)
+        
+        # Add some random predictions to allow for exploration
+        for _ in range(2):
+            possible_worlds.append(state + random.randint(-1, 1))
+            
+        return possible_worlds
 
 class Memory:
     def __init__(self):
@@ -156,6 +175,7 @@ class UDMM_Agent:
         self.time = TimeRepresentation()
         
         self.decision.set_learning_model(self.learning)
+        self.prediction.set_learning_model(self.learning) # Connect learning to prediction here
 
     def step(self, environment):
         current_state_pos = environment.get_state()
