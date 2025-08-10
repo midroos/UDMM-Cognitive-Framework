@@ -87,6 +87,12 @@ class DecisionMaking:
         self.learning_model = model
     
     def decide(self, possible_worlds, goal, current_state):
+        # Introduce a small chance for random exploration (e.g., 10%)
+        if random.random() < 0.1:
+            print("Agent decided to explore randomly.")
+            return random.randint(0, 3)
+
+        # First, check if the agent has learned any rewarding actions for this state
         if self.learning_model is not None and current_state in self.learning_model.action_weights:
             learned_actions = self.learning_model.action_weights[current_state]
             
@@ -95,6 +101,7 @@ class DecisionMaking:
                 print(f"Agent decided based on past reward: {best_action}")
                 return best_action
 
+        # Otherwise, fall back to the old logic
         if goal is not None:
             return min(possible_worlds, key=lambda w: abs(w - goal))
         
@@ -175,7 +182,7 @@ class UDMM_Agent:
         self.time = TimeRepresentation()
         
         self.decision.set_learning_model(self.learning)
-        self.prediction.set_learning_model(self.learning) # Connect learning to prediction here
+        self.prediction.set_learning_model(self.learning)
 
     def step(self, environment):
         current_state_pos = environment.get_state()
