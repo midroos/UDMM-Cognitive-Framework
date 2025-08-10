@@ -77,15 +77,16 @@ class Intention:
         return self.goal
 
 class DecisionMaking:
-    def __init__(self):
+    def __init__(self, epsilon=0.1):
         self.learning_model = None
+        self.epsilon = epsilon
     
     def set_learning_model(self, model):
         self.learning_model = model
     
     def decide(self, possible_worlds, goal, current_state):
-        if random.random() < 0.1:
-            print("Agent decided to explore randomly.")
+        if random.random() < self.epsilon:
+            print(f"Agent decided to explore randomly (Epsilon={self.epsilon}).")
             return random.randint(0, 3)
 
         if self.learning_model is not None and current_state in self.learning_model.action_weights:
@@ -93,9 +94,9 @@ class DecisionMaking:
             
             if learned_actions:
                 best_action = max(learned_actions, key=learned_actions.get)
-                print(f"Agent decided based on past reward: {best_action}")
+                print(f"Agent decided to exploit past reward: {best_action}")
                 return best_action
-
+        
         if goal is not None:
             return min(possible_worlds, key=lambda w: abs(w - goal))
         
@@ -163,14 +164,14 @@ class Environment:
 
 # ====== Agent ======
 class UDMM_Agent:
-    def __init__(self):
+    def __init__(self, epsilon):
         self.perception = Perception()
         self.prediction = Prediction()
         self.memory = Memory()
         self.learning = Learning()
         self.emotion = Emotion()
         self.intention = Intention()
-        self.decision = DecisionMaking()
+        self.decision = DecisionMaking(epsilon=epsilon)
         self.action = Action()
         self.world_simulator = WorldSimulator()
         self.time = TimeRepresentation()
