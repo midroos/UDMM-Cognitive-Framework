@@ -3,23 +3,21 @@ import random
 
 if __name__ == "__main__":
     env = Environment()
-    agent = UDMM_Agent()
     
     print("Welcome to the UDMM Agent V2 simulation!")
     
-    # Run the simulation for a number of episodes
-    for episode in range(10): # We will run for more episodes to see the agent learn
+    for episode in range(10):
         print(f"\n--- Starting Episode {episode + 1} ---")
         
+        # Create a new agent for each episode to start with a fresh mind
+        agent = UDMM_Agent()
         env.reset()
         
-        # Give the agent a goal
         goal_pos = env.goal_pos
         goal_state = agent.perception.perceive(goal_pos)
         agent.intention.set_goal(goal_state)
         
-        # Run for a fixed number of steps within the episode
-        for step in range(30): # We will run for more steps to give the agent time to learn
+        for step in range(30):
             reward, emotion_state, current_pos = agent.step(env)
             
             env.render()
