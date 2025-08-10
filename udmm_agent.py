@@ -17,17 +17,14 @@ class Prediction:
     def predict(self, state):
         possible_worlds = []
         
-        # If the agent has learned something for this state, use that knowledge
         if self.learning_model is not None and state in self.learning_model.action_weights:
             learned_actions = self.learning_model.action_weights[state]
             
             if learned_actions:
                 best_action = max(learned_actions, key=learned_actions.get)
-                # Predict that the most rewarding action will lead to a good world
-                predicted_world = state + best_action # A simple way to model this
+                predicted_world = state + best_action
                 possible_worlds.append(predicted_world)
         
-        # Add some random predictions to allow for exploration
         for _ in range(2):
             possible_worlds.append(state + random.randint(-1, 1))
             
@@ -87,12 +84,10 @@ class DecisionMaking:
         self.learning_model = model
     
     def decide(self, possible_worlds, goal, current_state):
-        # Introduce a small chance for random exploration (e.g., 10%)
         if random.random() < 0.1:
             print("Agent decided to explore randomly.")
             return random.randint(0, 3)
 
-        # First, check if the agent has learned any rewarding actions for this state
         if self.learning_model is not None and current_state in self.learning_model.action_weights:
             learned_actions = self.learning_model.action_weights[current_state]
             
@@ -101,7 +96,6 @@ class DecisionMaking:
                 print(f"Agent decided based on past reward: {best_action}")
                 return best_action
 
-        # Otherwise, fall back to the old logic
         if goal is not None:
             return min(possible_worlds, key=lambda w: abs(w - goal))
         
@@ -183,31 +177,3 @@ class UDMM_Agent:
         
         self.decision.set_learning_model(self.learning)
         self.prediction.set_learning_model(self.learning)
-
-    def step(self, environment):
-        current_state_pos = environment.get_state()
-        current_state = self.perception.perceive(current_state_pos)
-        
-        possible_futures = self.prediction.predict(current_state)
-        simulated_worlds = self.world_simulator.simulate(current_state)
-        
-        recalled_state = self.memory.recall()
-        if recalled_state is not None:
-            prediction_error = abs(current_state - recalled_state[0])
-        else:
-            prediction_error = 0
-        
-        emotion_state = self.emotion.update(prediction_error)
-        
-        choice = self.decision.decide(possible_futures, self.intention.get_goal(), current_state)
-        
-        reward = self.action.execute(choice, environment)
-        
-        experience = (current_state, choice, reward)
-        self.memory.store(current_state, choice, reward)
-        
-        self.learning.update_model(experience)
-        
-        self.time.tick()
-        
-        return reward, emotion_state, environment.get_state()
