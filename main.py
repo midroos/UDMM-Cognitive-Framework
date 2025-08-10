@@ -4,13 +4,16 @@ import random
 if __name__ == "__main__":
     env = Environment()
     
-    print("Welcome to the UDMM Agent V2 simulation!")
+    print("Welcome to the UDMM Agent V3 simulation! Now with Epsilon-Greedy strategy.")
+    
+    # We will use a simple epsilon value for now
+    epsilon_value = 0.1
     
     for episode in range(10):
         print(f"\n--- Starting Episode {episode + 1} ---")
         
-        # Create a new agent for each episode to start with a fresh mind
-        agent = UDMM_Agent()
+        # Create a new agent for each episode with the epsilon value
+        agent = UDMM_Agent(epsilon=epsilon_value)
         env.reset()
         
         goal_pos = env.goal_pos
