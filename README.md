@@ -69,16 +69,20 @@ You will need to have **Python 3** and **numpy** installed.
     Click `File` then `New notebook`.
 3.  **Execute the following commands in a single cell:**
     ```python
-    # Install the necessary library
-    !pip install numpy
-    # Clone the project from GitHub
-    !git clone [https://github.com/midroos/UDMM-Cognitive-Framework.git](https://github.com/midroos/UDMM-Cognitive-Framework.git)
-    # Change directory to the project folder
-    %cd UDMM-Cognitive-Framework
-    # Ensure you are on the correct branch
-    !git checkout v2-development
-    # Run the simulation
-    !python main.py
+    # 1. تثبيت المكتبات المطلوبة
+!pip install numpy
+
+# 2. استنساخ المشروع من GitHub
+!git clone https://github.com/midroos/UDMM-Cognitive-Framework.git
+
+# 3. الدخول إلى مجلد المشروع
+%cd UDMM-Cognitive-Framework
+
+# 4. (اختياري) التحويل إلى فرع التطوير إذا كان موجود
+!git checkout v2-development || echo "فرع v2-development غير موجود، سيتم استخدام الفرع الرئيسي"
+
+# 5. تشغيل الكود الأساسي
+!python main.py
     ```
 
 **What to expect?**
