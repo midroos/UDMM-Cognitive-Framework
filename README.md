@@ -1,5 +1,5 @@
-# 🧠 UDMM Cognitive Framework - Version 2
-*A Unified Dynamic Model of Mind for Artificial Agents*
+# 🧠 UDMM Cognitive Framework - Q-Learning Agent
+*An implementation of a learning agent based on the UDMM concept.*
 
 [![ORCID](https://img.shields.io/badge/ORCID-0009--0005--1948--402X-green)](https://orcid.org/0009-0005-1948-402X)
 [![GitHub Repo](https://img.shields.io/badge/GitHub-UDMM--Cognitive--Framework-blue?logo=github)](https://github.com/midroos/UDMM-Cognitive-Framework)
@@ -7,78 +7,60 @@
 ---
 
 ## 📖 Overview
-The **UDMM Cognitive Framework** is a novel approach to building artificial agents inspired by the **Unified Dynamic Model of Mind (UDMM)**.  
-It frames cognition as a dynamic, predictive, and interactive process between an agent's internal generative models and the external environment.
+This project implements a cognitive agent that learns to navigate a grid-world environment to reach a goal. The agent is inspired by the **Unified Dynamic Model of Mind (UDMM)** and uses **Q-learning**, a standard reinforcement learning algorithm, to adapt its behavior based on experience.
 
-**What's New in Version 2 (V2)?**
-In this version, we have transformed the agent from a purely reactive entity into a **learning and adaptive system**. Key updates include:
-
-- **Upgraded Memory:** The agent now stores complete experiences (state, action, reward).
-- **Functional Learning System:** The agent uses its memory to discover which actions lead to rewards.
-- **Intelligent Decision-Making:** Decisions are no longer random but are guided by the agent's learned knowledge.
-- **More Accurate Predictions:** The prediction module now uses learned information to make more informed predictions about the future.
+This version has been refactored to provide a clear, functional, and learning-based implementation.
 
 ---
 
-## 🧩 Architecture
-The UDMM architecture is divided into **functional modules**, each representing a core cognitive capability:
+## 🧩 Core Architecture
+The agent's architecture is composed of several key modules that work together:
 
 | Module            | Function |
 |-------------------|----------|
-| **Perception**    | Gathers and interprets sensory inputs |
-| **Prediction**    | Generates future states and evaluates possible worlds based on learning |
-| **Memory**        | Stores complete past experiences (state, action, reward) |
-| **Learning**      | Analyzes experiences to update the agent's internal model |
-| **Emotion**       | Simulates affective states based on prediction errors |
-| **Intention**     | Sets and updates goals |
-| **Decision Making** | Selects the optimal action based on learning and prediction |
-| **Action**        | Executes actions in the environment |
-| **World Simulator** | Generates and tests possible worlds based on agent and environment dynamics |
-| **Time Representation** | Synchronizes the model with reality, allows for recall and forecasting |
+| **Environment**   | A simple grid world where the agent operates. |
+| **Perception**    | Perceives the agent's current position (state). |
+| **Memory**        | Stores a history of the agent's experiences (state, action, reward). |
+| **Decision Making** | Uses a **Q-table** to select the best action for a given state, balancing exploration and exploitation (epsilon-greedy). |
+| **Emotion**       | A simple module that simulates an emotional state based on rewards. |
+| **Intention**     | Sets a high-level goal for the agent. |
+
+The agent learns by updating its Q-table after each action, gradually improving its ability to find the most efficient path to the goal.
 
 ---
 
-## 📜 Core Principles
-1. **Predictive Processing** – The agent constantly compares its predicted and actual sensory states.  
-2. **Possible Worlds** – The agent simulates multiple potential futures before acting.  
-3. **Error Minimization** – Decisions aim to reduce uncertainty and surprise.  
-4. **Continuous Synchronization** – The agent keeps its internal model aligned with the real environment.  
+## 💻 Code Structure
+The project is organized into two main files:
 
----
-
-## 💻 Integrated Code
-This project provides a simple, self-contained implementation of the UDMM agent.  
-The code is structured into modular classes, allowing you to easily understand and expand on the core concepts.
-
-- **File:** `udmm_agent.py` – *(The full code for the agent and its modules is here)*  
-- **File:** `main.py` – *(Runs the simulation and orchestrates the agent's interaction with the environment)*  
+- **`main.py`**: The entry point for the simulation. It sets up the environment and the agent, runs the training loop, and reports on the agent's performance.
+- **`udmm_agent.py`**: Contains the full implementation of the `UDMM_Agent` and its components, including the `Environment`, `DecisionMaking` (with Q-learning), `Memory`, and other modules.
+- **`legacy_code/`**: This directory contains unused files from a previous, more complex "Active Inference" design. They are preserved for reference but are not part of the current implementation.
 
 ---
 
 ## ▶️ Getting Started
-This guide explains how to run the UDMM agent simulation on **Google Colab**.
+You can run the simulation in a local environment or on a platform like Google Colab.
 
 **Prerequisites:**  
-- Python 3  
-- `numpy`  
+- Python 3
+- `numpy`
 
-**Steps:**
-1. Open Google Colab → [https://colab.research.google.com/](https://colab.research.google.com/)  
-2. Create a new notebook (`File` → `New notebook`).  
-3. Paste and run the following in **one cell**:
+**Running Locally or in a Notebook:**
 
-```bash
-# Install the necessary library
-pip install numpy
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/midroos/UDMM-Cognitive-Framework.git
+   cd UDMM-Cognitive-Framework
+   ```
 
-# Clone the project from GitHub
-git clone https://github.com/midroos/UDMM-Cognitive-Framework.git
+2. **Install dependencies:**
+   ```bash
+   pip install numpy
+   ```
 
-# Change directory to the project folder
-cd UDMM-Cognitive-Framework
+3. **Run the simulation:**
+   ```bash
+   python main.py
+   ```
 
-# Ensure you are on the correct branch
-git checkout v2-development
-
-# Run the simulation
-python main.py
+You will see output showing the agent's learning progress over 100 episodes, with the average reward and steps per episode printed every 10 episodes.
