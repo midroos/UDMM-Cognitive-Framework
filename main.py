@@ -6,15 +6,13 @@ if __name__ == "__main__":
     
     # Hyperparameters
     epsilon = 0.1
-    alpha = 0.1
-    gamma = 0.9
     num_episodes = 100
     max_steps_per_episode = 200
 
-    # Create the learning agent
-    agent = UDMM_Agent(epsilon=epsilon, alpha=alpha, gamma=gamma)
+    # Create the agent
+    agent = UDMM_Agent(epsilon=epsilon)
     
-    print("--- UDMM Agent with Q-Learning Simulation ---")
+    print("--- UDMM Agent Simulation ---")
     
     total_rewards = []
     steps_per_episode = []
@@ -22,6 +20,7 @@ if __name__ == "__main__":
     for episode in range(num_episodes):
         env.reset()
         agent.reset()
+        agent.intention.set_goal(env.goal_pos)
         
         episode_reward = 0
         
@@ -29,7 +28,7 @@ if __name__ == "__main__":
             reward, _, _ = agent.step(env)
             episode_reward += reward
             
-            if reward > 1: # Goal reached
+            if reward > 0: # Goal reached
                 steps_per_episode.append(step + 1)
                 break
         else: # Loop finished without break
@@ -44,10 +43,3 @@ if __name__ == "__main__":
             print(f"Episode {episode + 1}/{num_episodes} | Avg Reward (last 10): {avg_reward:.2f} | Avg Steps (last 10): {avg_steps:.2f}")
 
     print("\n--- Simulation Finished ---")
-
-    # Optional: Display the learned Q-table (first 10 entries)
-    print("\nSample of Learned Q-Table:")
-    for i, ((state, action), value) in enumerate(agent.decision.q_table.items()):
-        if i >= 10:
-            break
-        print(f"  State: {state}, Action: {action} -> Q-Value: {value:.3f}")
