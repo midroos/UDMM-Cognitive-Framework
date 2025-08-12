@@ -1,53 +1,58 @@
+# main.py
 from udmm_agent import UDMM_Agent, Environment
 import numpy as np
 
-if __name__ == "__main__":
+def run(episodes=200, max_steps=200, render=False):
     env = Environment(size=8)
-    
-    # Hyperparameters
-    epsilon = 0.1
-    alpha = 0.1
-    gamma = 0.9
-    num_episodes = 100
-    max_steps_per_episode = 200
+    agent = UDMM_Agent(alpha=0.12, gamma=0.95, window=12)
 
-    # Create the learning agent
-    agent = UDMM_Agent(epsilon=epsilon, alpha=alpha, gamma=gamma)
-    
-    print("--- UDMM Agent with Q-Learning Simulation ---")
-    
-    total_rewards = []
-    steps_per_episode = []
+    logs = {
+        "intentions": [],
+        "emotions": [],
+        "rewards": [],
+        "steps": []
+    }
 
-    for episode in range(num_episodes):
-        env.reset()
-        agent.reset()
-        
-        episode_reward = 0
-        
-        for step in range(max_steps_per_episode):
-            reward, _, _ = agent.step(env)
-            episode_reward += reward
-            
-            if reward > 1: # Goal reached
-                steps_per_episode.append(step + 1)
+    for ep in range(episodes):
+        pos, goal = env.reset()
+        agent.set_goal(goal)
+        state = (pos, goal)
+        total_reward = 0.0
+        for step in range(max_steps):
+            # perception
+            perceived_state, perceived_goal = agent.perception.perceive(state[0], state[1])
+            current_state = (perceived_state, perceived_goal)
+            # choose action
+            action = agent.decision.choose_action(current_state, agent.emotion.state, agent.intention.get())
+            # step env
+            new_pos, reward, done = env.step(action)
+            next_state = (new_pos, goal)
+            # update agent (emotion, intention, learning)
+            new_intent = agent.step_update(current_state, action, reward, next_state, done)
+            # logs
+            logs["intentions"].append(new_intent)
+            logs["emotions"].append(agent.emotion.state)
+            total_reward += reward
+            state = next_state
+            if render:
+                print(f"Ep{ep+1} Step{step+1} Pos:{new_pos} Act:{action} Reward:{reward:.2f} Emotion:{agent.emotion.state} Intention:{new_intent}")
+                env.render()
+            if done:
+                logs["steps"].append(step+1)
                 break
-        else: # Loop finished without break
-            steps_per_episode.append(max_steps_per_episode)
+        else:
+            logs["steps"].append(max_steps)
+        logs["rewards"].append(total_reward)
+        if (ep+1) % 10 == 0:
+            avg_r = np.mean(logs["rewards"][-10:])
+            avg_s = np.mean(logs["steps"][-10:])
+            print(f"[Ep {ep+1}/{episodes}] avgR(last10)={avg_r:.2f} avgSteps(last10)={avg_s:.1f} curEmotion={agent.emotion.state} curIntent={agent.intention.get()}")
 
-        total_rewards.append(episode_reward)
+    print("Finished.")
+    return logs
 
-        # Print progress
-        if (episode + 1) % 10 == 0:
-            avg_reward = np.mean(total_rewards[-10:])
-            avg_steps = np.mean(steps_per_episode[-10:])
-            print(f"Episode {episode + 1}/{num_episodes} | Avg Reward (last 10): {avg_reward:.2f} | Avg Steps (last 10): {avg_steps:.2f}")
-
-    print("\n--- Simulation Finished ---")
-
-    # Optional: Display the learned Q-table (first 10 entries)
-    print("\nSample of Learned Q-Table:")
-    for i, ((state, action), value) in enumerate(agent.decision.q_table.items()):
-        if i >= 10:
-            break
-        print(f"  State: {state}, Action: {action} -> Q-Value: {value:.3f}")
+if __name__ == "__main__":
+    logs = run(episodes=200, max_steps=200, render=False)
+    # sample tail
+    print("Last intentions:", logs["intentions"][-20:])
+    print("Last emotions:", logs["emotions"][-20:])
