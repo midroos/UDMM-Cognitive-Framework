@@ -11,12 +11,16 @@ class Environment:
     def reset(self):
         self.agent_pos = (0, 0)
         self.goal_pos = self.random_goal_pos()
-        return self.agent_pos
+        return self.agent_pos, self.goal_pos
 
     def random_goal_pos(self):
-        return (random.randint(0, self.size - 1), random.randint(0, self.size - 1))
+        goal_pos = (0, 0)
+        while goal_pos == (0, 0):
+            goal_pos = (random.randint(0, self.size - 1), random.randint(0, self.size - 1))
+        return goal_pos
         
     def step(self, action):
+        old_pos = self.agent_pos
         if action == "up":
             self.agent_pos = (max(0, self.agent_pos[0] - 1), self.agent_pos[1])
         elif action == "down":
@@ -26,108 +30,95 @@ class Environment:
         elif action == "right":
             self.agent_pos = (self.agent_pos[0], min(self.size - 1, self.agent_pos[1] + 1))
         
-        reward = 1 if self.agent_pos == self.goal_pos else 0
-        return reward, self.agent_pos
+        done = self.agent_pos == self.goal_pos
+
+        reward = 10 if done else -0.1
+        return self.agent_pos, reward, done
 
     def render(self):
         grid = [["." for _ in range(self.size)] for _ in range(self.size)]
         grid[self.agent_pos[0]][self.agent_pos[1]] = "A"
         grid[self.goal_pos[0]][self.goal_pos[1]] = "G"
         
-        print("-" * (self.size + 1))
+        print("-" * (self.size * 2 + 1))
         for row in grid:
             print(" ".join(row))
-        print("-" * (self.size + 1))
+        print("-" * (self.size * 2 + 1))
 
 # Represents the agent's Perception component
 class Perception:
-    def __init__(self):
-        pass
+    def perceive(self, state, goal):
+        return state, goal
 
-    def perceive(self, state):
-        return state
-
-# Represents the agent's Intention component
+# Represents the agent's Intention component (now more for high-level tracking)
 class Intention:
     def __init__(self):
         self.goal = None
-        self.goal_history = []
-        self.current_goal_attempts = 0
         
     def set_goal(self, goal_state):
         self.goal = goal_state
-        self.goal_history.append(goal_state)
-        self.current_goal_attempts = 0
-
-    def is_goal_achieved(self, current_state):
-        return current_state == self.goal
 
 # Represents the agent's Emotion component
 class Emotion:
     def __init__(self):
         self.state = "Neutral"
-        self.motivation = 0
         
     def update_emotion(self, reward):
-        if reward > 0:
+        if reward > 1:
+            self.state = "Joyful"
+        elif reward > 0:
             self.state = "Content"
-            self.motivation += 1
         else:
-            self.state = "Anxious" if self.motivation > 0 else "Content"
+            self.state = "Focused"
 
-# Represents the agent's Decision Making component
+# Stores the agent's experiences
+class Memory:
+    def __init__(self):
+        self.experiences = []
+
+    def add_experience(self, state, action, reward, next_state, done):
+        self.experiences.append((state, action, reward, next_state, done))
+
+# Handles Q-learning based decision making
 class DecisionMaking:
-    def __init__(self, epsilon=0.1):
+    def __init__(self, actions, epsilon=0.1, alpha=0.1, gamma=0.9):
+        self.actions = actions
         self.epsilon = epsilon
-        self.exploration_happened = False
+        self.alpha = alpha
+        self.gamma = gamma
+        self.q_table = {}
 
-    def choose_action(self, current_state, goal_state):
-        self.exploration_happened = False
+    def get_q_value(self, state, action):
+        return self.q_table.get((state, action), 0.0)
 
-        # Epsilon-Greedy Strategy for exploration
+    def choose_action(self, state):
         if random.uniform(0, 1) < self.epsilon:
-            # Explore: choose a random action
-            self.exploration_happened = True
-            action = random.choice(["up", "down", "left", "right"])
-            return action
+            return random.choice(self.actions)
         else:
-            # Exploit: choose the "best" action based on current knowledge
-            self.exploration_happened = False
-            if current_state[0] < goal_state[0]:
-                return "down"
-            elif current_state[0] > goal_state[0]:
-                return "up"
-            elif current_state[1] < goal_state[1]:
-                return "right"
-            elif current_state[1] > goal_state[1]:
-                return "left"
-            else:
-                return "stay"
+            q_values = {a: self.get_q_value(state, a) for a in self.actions}
+            max_q = max(q_values.values())
+            best_actions = [a for a, q in q_values.items() if q == max_q]
+            return random.choice(best_actions)
+
+    def update_q_table(self, state, action, reward, next_state, done):
+        old_q_value = self.get_q_value(state, action)
+        next_q_values = [self.get_q_value(next_state, a) for a in self.actions]
+        max_next_q = max(next_q_values) if not done else 0.0
+        new_q_value = old_q_value + self.alpha * (reward + self.gamma * max_next_q - old_q_value)
+        self.q_table[(state, action)] = new_q_value
 
 # Represents the full agent combining all components
 class UDMM_Agent:
-    def __init__(self, epsilon=0.1):
+    def __init__(self, epsilon=0.1, alpha=0.1, gamma=0.9):
         self.perception = Perception()
         self.intention = Intention()
         self.emotion = Emotion()
-        self.decision = DecisionMaking(epsilon)
-        self.current_pos = (0, 0)
-
+        self.memory = Memory()
+        self.actions = ["up", "down", "left", "right"]
+        self.decision = DecisionMaking(self.actions, epsilon, alpha, gamma)
+        
+    def learn(self, state, action, reward, next_state, done):
+        self.decision.update_q_table(state, action, reward, next_state, done)
+        
     def reset(self):
-        self.current_pos = (0, 0)
-
-    def step(self, env):
-        current_state = self.perception.perceive(self.current_pos)
-        goal_state = self.intention.goal
-        
-        # Decision-making process
-        action = self.decision.choose_action(current_state, goal_state)
-
-        # Agent acts on the environment
-        reward, new_pos = env.step(action)
-        self.current_pos = new_pos
-        
-        # Update emotion based on reward
-        self.emotion.update_emotion(reward)
-        
-        return reward, self.emotion.state, self.current_pos
+        self.emotion.state = "Neutral"
