@@ -33,3 +33,28 @@ class Environment:
         for row in grid:
             print(" ".join(row))
         print("-"*(self.size*2+1))
+
+# ---------------------------
+# Null Environment
+# ---------------------------
+class NullEnvironment:
+    """
+    A dummy environment that does nothing. It represents the agent being "offline"
+    or in a state of internal reflection, receiving no external sensory input.
+    """
+    def __init__(self, size=8):
+        self.size = size # Keep size for compatibility if needed
+        self.agent_pos = None
+        self.goal_pos = None
+
+    def reset(self):
+        # No state to return
+        return None, None
+
+    def step(self, action):
+        # No state change, no reward, and the episode is immediately "done"
+        return None, 0.0, True
+
+    def render(self):
+        # Nothing to render
+        pass

@@ -1,6 +1,5 @@
 # udmm_agent.py
 
-# We need to import the new modules in case the file is run alone for testing
 import random
 import numpy as np
 from collections import deque
@@ -25,7 +24,7 @@ class Memory:
         return random.sample(list(self.experiences), num_samples)
 
 # ---------------------------
-# Full UDMM Agent composition (Updated)
+# Full UDMM Agent composition (Updated for decoupling)
 # ---------------------------
 class UDMM_Agent:
     def __init__(self, alpha=0.1, gamma=0.9, window=12):
@@ -35,6 +34,7 @@ class UDMM_Agent:
         self.predictive_model = PredictiveModel()
         self.actions = ["up", "down", "left", "right"]
         self.decision = DecisionMaking(self.actions, alpha=alpha, gamma=gamma, base_epsilon=0.08)
+        # The planner is created but not used in the final logic. It remains as a scaffold.
         self.planner = Planner(self.predictive_model, self.decision, self.actions)
         self.intent = None
         self.steps_since_last_train = 0
@@ -42,13 +42,33 @@ class UDMM_Agent:
     def set_goal(self, goal_pos):
         self.intent = goal_pos
 
-    def train_predictive_model(self, batch_size=64):
-        if len(self.memory.experiences) > batch_size:
-            experiences = self.memory.get_experiences(batch_size)
-            self.predictive_model.train(experiences)
-            self.steps_since_last_train = 0
+    def review_memories(self):
+        """
+        An internal cognitive action where the agent reflects on past experiences
+        to improve its world model.
+        """
+        # print("Agent is offline. Reviewing memories...") # Optional: for debugging
+        self.train_predictive_model()
+        return None # No external action
 
-    def step_update(self, state_tuple, action, reward, next_state_tuple, done):
+    def step(self, current_state):
+        """
+        The main agent loop for a single step. It perceives the state and decides on an action.
+        Handles both online (in an environment) and offline (no environment) states.
+        """
+        if current_state is None:
+            # If there is no external state, perform an internal action.
+            return self.review_memories()
+
+        # When online, choose an action based on the state and emotion.
+        action = self.decision.choose_action(current_state, self.emotion.state)
+        return action
+
+    def learn_from_experience(self, state_tuple, action, reward, next_state_tuple, done):
+        """
+        Processes the outcome of an action taken in the environment to learn and update state.
+        (Formerly step_update)
+        """
         # Use the model to predict the outcome of the current state-action
         _, predicted_reward = self.predictive_model.predict(state_tuple, action)
 
@@ -71,5 +91,11 @@ class UDMM_Agent:
 
         # Periodically train the predictive model
         self.steps_since_last_train += 1
-        if self.steps_since_last_train > 25: # Train every 25 steps to make the model ready sooner
+        if self.steps_since_last_train > 25:
             self.train_predictive_model()
+
+    def train_predictive_model(self, batch_size=64):
+        if len(self.memory.experiences) > batch_size:
+            experiences = self.memory.get_experiences(batch_size)
+            self.predictive_model.train(experiences)
+            self.steps_since_last_train = 0
