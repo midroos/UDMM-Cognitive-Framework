@@ -1,86 +1,91 @@
 import random
 import numpy as np
+from collections import deque
 
 # A simple model of the environment for the agent to interact with
 class Environment:
     def __init__(self, size=8):
         self.size = size
         self.agent_pos = (0, 0)
-        self.goal_pos = self.random_goal_pos()
+        self.goal_pos = self._random_pos()
     
     def reset(self):
         self.agent_pos = (0, 0)
-        self.goal_pos = self.random_goal_pos()
-        return self.agent_pos
+        self.goal_pos = self._random_pos()
+        return self.agent_pos, self.goal_pos
 
-    def random_goal_pos(self):
-        return (random.randint(0, self.size - 1), random.randint(0, self.size - 1))
+    def _random_pos(self):
+        # Make sure goal is not at the starting position
+        pos = (random.randint(0, self.size - 1), random.randint(0, self.size - 1))
+        while pos == self.agent_pos:
+            pos = (random.randint(0, self.size - 1), random.randint(0, self.size - 1))
+        return pos
         
     def step(self, action):
+        x, y = self.agent_pos
         if action == "up":
-            self.agent_pos = (max(0, self.agent_pos[0] - 1), self.agent_pos[1])
+            x = max(0, x - 1)
         elif action == "down":
-            self.agent_pos = (min(self.size - 1, self.agent_pos[0] + 1), self.agent_pos[1])
+            x = min(self.size - 1, x + 1)
         elif action == "left":
-            self.agent_pos = (self.agent_pos[0], max(0, self.agent_pos[1] - 1))
+            y = max(0, y - 1)
         elif action == "right":
-            self.agent_pos = (self.agent_pos[0], min(self.size - 1, self.agent_pos[1] + 1))
+            y = min(self.size - 1, y + 1)
         
-        reward = 1 if self.agent_pos == self.goal_pos else -0.1 # Give a small negative reward for each step
+        self.agent_pos = (x, y)
 
-        # Make reaching the goal more rewarding
-        if self.agent_pos == self.goal_pos:
-            reward = 10
+        done = self.agent_pos == self.goal_pos
+        if done:
+            reward = 10.0
+        else:
+            # A small negative reward for every step to encourage efficiency
+            reward = -0.1
 
-        return reward, self.agent_pos
+        return self.agent_pos, reward, done
 
-    def render(self):
-        grid = [["." for _ in range(self.size)] for _ in range(self.size)]
-        grid[self.agent_pos[0]][self.agent_pos[1]] = "A"
-        grid[self.goal_pos[0]][self.goal_pos[1]] = "G"
-        
-        print("-" * (self.size * 2 + 1))
-        for row in grid:
-            print(" ".join(row))
-        print("-" * (self.size * 2 + 1))
+# --- Agent Components ---
 
-# Represents the agent's Perception component
 class Perception:
-    def perceive(self, state):
-        return state
+    def perceive(self, agent_pos, goal_pos):
+        # For now, perception is direct. It could be noisy in the future.
+        return agent_pos, goal_pos
 
-# Represents the agent's Intention component (now more for high-level tracking)
 class Intention:
     def __init__(self):
+        self.current_intention = "explore" # Default intention
         self.goal = None
-        
-    def set_goal(self, goal_state):
-        self.goal = goal_state
 
-# Represents the agent's Emotion component
+    def set_goal(self, goal):
+        self.goal = goal
+        self.current_intention = "reach_goal"
+        
+    def get(self):
+        return self.current_intention
+
+    def update(self, done):
+        if done:
+            self.current_intention = "finished"
+
 class Emotion:
     def __init__(self):
         self.state = "Neutral"
-        
-    def update_emotion(self, reward):
-        if reward > 1:
-            self.state = "Joyful"
-        elif reward > 0:
+        self.reward_history = deque(maxlen=10) # Track recent rewards
+
+    def update(self, reward):
+        self.reward_history.append(reward)
+        avg_reward = np.mean(self.reward_history)
+
+        if reward >= 10:
+            self.state = "Joy"
+        elif avg_reward > -0.5:
             self.state = "Content"
-        else:
+        elif avg_reward > -2.0:
             self.state = "Focused"
+        else:
+            self.state = "Anxious"
 
-# Stores the agent's experiences
-class Memory:
-    def __init__(self):
-        self.experiences = []
-
-    def add_experience(self, state, action, reward, next_state, done):
-        self.experiences.append((state, action, reward, next_state, done))
-
-# Handles Q-learning based decision making
 class DecisionMaking:
-    def __init__(self, actions, epsilon=0.1, alpha=0.1, gamma=0.9):
+    def __init__(self, actions, alpha, gamma, epsilon=0.1):
         self.actions = actions
         self.epsilon = epsilon
         self.alpha = alpha
@@ -90,52 +95,82 @@ class DecisionMaking:
     def get_q_value(self, state, action):
         return self.q_table.get((state, action), 0.0)
 
-    def choose_action(self, state):
-        if random.uniform(0, 1) < self.epsilon:
+    def choose_action(self, state, emotion, intention):
+        current_epsilon = self.epsilon
+        if emotion == "Anxious":
+            current_epsilon = self.epsilon * 1.5 # Explore more when anxious
+        elif emotion == "Joy" or emotion == "Content":
+            current_epsilon = self.epsilon * 0.5 # Exploit more when happy
+
+        if random.uniform(0, 1) < current_epsilon or intention == "explore":
             return random.choice(self.actions)
         else:
             q_values = [self.get_q_value(state, a) for a in self.actions]
             max_q = max(q_values)
-            best_actions = [i for i, q in enumerate(q_values) if q == max_q]
-            action_index = random.choice(best_actions)
-            return self.actions[action_index]
+            best_actions = [a for a, q in zip(self.actions, q_values) if q == max_q]
+            return random.choice(best_actions)
 
     def update_q_table(self, state, action, reward, next_state):
-        old_q_value = self.get_q_value(state, action)
-        next_q_values = [self.get_q_value(next_state, a) for a in self.actions]
-        max_next_q = max(next_q_values)
-        new_q_value = old_q_value + self.alpha * (reward + self.gamma * max_next_q - old_q_value)
-        self.q_table[(state, action)] = new_q_value
+        old_q = self.get_q_value(state, action)
+        next_max_q = max([self.get_q_value(next_state, a) for a in self.actions])
+        new_q = old_q + self.alpha * (reward + self.gamma * next_max_q - old_q)
+        self.q_table[(state, action)] = new_q
+        return new_q - old_q # Return the temporal difference error
 
-# Represents the full agent combining all components
+class Prediction:
+    def __init__(self, q_learning_model, actions, grid_size):
+        self.q_model = q_learning_model
+        self.actions = actions
+        self.grid_size = grid_size
+
+    def predict(self, state, intention):
+        if intention == "explore":
+            return 0.0, None # No specific prediction when just exploring
+
+        q_values = [self.q_model.get_q_value(state, a) for a in self.actions]
+        predicted_reward = max(q_values)
+        best_action = self.actions[np.argmax(q_values)]
+
+        x, y = state[0]
+        if best_action == "up":
+            next_pos = (max(0, x - 1), y)
+        elif best_action == "down":
+            next_pos = (min(self.grid_size - 1, x + 1), y)
+        elif best_action == "left":
+            next_pos = (x, max(0, y - 1))
+        elif best_action == "right":
+            next_pos = (x, min(self.grid_size - 1, y + 1))
+
+        return predicted_reward, next_pos
+
+# The main agent class
 class UDMM_Agent:
-    def __init__(self, epsilon=0.1, alpha=0.1, gamma=0.9):
+    def __init__(self, alpha, gamma, window, grid_size=8):
+        self.actions = ["up", "down", "left", "right"]
+
         self.perception = Perception()
         self.intention = Intention()
         self.emotion = Emotion()
-        self.memory = Memory()
-        self.actions = ["up", "down", "left", "right"]
-        self.decision = DecisionMaking(self.actions, epsilon, alpha, gamma)
-        self.current_pos = (0, 0)
-
-    def step(self, env):
-        current_state = self.perception.perceive(self.current_pos)
-        action = self.decision.choose_action(current_state)
         
-        reward, new_pos = env.step(action)
-        self.current_pos = new_pos
-        next_state = self.perception.perceive(new_pos)
+        self.decision_model = DecisionMaking(self.actions, alpha=alpha, gamma=gamma)
+        self.prediction = Prediction(self.decision_model, self.actions, grid_size)
         
-        self.emotion.update_emotion(reward)
-        done = (reward > 1) # Goal reached
+        self.reward_window = deque(maxlen=window)
 
-        self.memory.add_experience(current_state, action, reward, next_state, done)
-        self.learn(current_state, action, reward, next_state)
-        
-        return reward, self.emotion.state, self.current_pos
+    def set_goal(self, goal):
+        self.intention.set_goal(goal)
 
-    def learn(self, state, action, reward, next_state):
-        self.decision.update_q_table(state, action, reward, next_state)
+    def step_update(self, current_state, action, reward, next_state, done):
+        # 1. Update world model (Q-table) and get TD-error
+        td_error = self.decision_model.update_q_table(current_state, action, reward, next_state)
 
-    def reset(self):
-        self.current_pos = (0, 0)
+        # 2. Update emotion based on reward
+        self.emotion.update(reward)
+
+        # 3. Update intention based on goal status
+        self.intention.update(done)
+
+        # Prediction Error (PE) can be modeled as the TD-error
+        prediction_error = td_error
+
+        return prediction_error, self.intention.get()
