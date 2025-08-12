@@ -1,6 +1,6 @@
 import numpy as np
 from environment import Environment
-from agent import UDMM_Agent
+from udmm_agent import UDMM_Agent
 
 # ---------------------------
 # TRAIN / RUN
