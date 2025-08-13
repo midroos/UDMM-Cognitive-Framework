@@ -1,5 +1,6 @@
 import random
 import numpy as np
+from ltm_memory import MemoryManager
 
 # A simple model of the environment for the agent to interact with
 class Environment:
@@ -49,39 +50,60 @@ class Perception:
     def perceive(self, state):
         return state
 
+# A new Prediction component as requested
+class Prediction:
+    def __init__(self, decision_module, memory=None):
+        self.decision_module = decision_module
+        self.memory = memory # For future use with retrieve_similar
+
+    def predict_next_q(self, next_state):
+        # A simple prediction: what is the best Q-value for the next state?
+        next_q_values = [self.decision_module.get_q_value(next_state, a) for a in self.decision_module.actions]
+        return max(next_q_values)
+
+    def calculate_error(self, reward, current_q, next_q_predicted, gamma):
+        # TD Error: R + gamma * max_Q(s',a') - Q(s,a)
+        return reward + gamma * next_q_predicted - current_q
+
 # Represents the agent's Intention component (now more for high-level tracking)
 class Intention:
-    def __init__(self):
-        self.goal = None
-        
-    def set_goal(self, goal_state):
-        self.goal = goal_state
+    def __init__(self, memory=None):
+        self.state = "Explore" # Default intention
+        self.memory = memory
+
+    def update_intention(self, emotion_state, pred_error):
+        # Simple logic: high error -> focus on learning, success -> exploit
+        if abs(pred_error) > 1.0:
+            self.state = "Focus"
+        elif emotion_state == "Joyful":
+            self.state = "Exploit"
+        else:
+            self.state = "Explore"
 
 # Represents the agent's Emotion component
 class Emotion:
-    def __init__(self):
+    def __init__(self, memory=None):
         self.state = "Neutral"
-        
-    def update_emotion(self, reward):
-        if reward > 1:
+        self.memory = memory # For long-term mood assessment
+
+    def update_emotion(self, reward, pred_error):
+        # Emotions are now influenced by both reward and prediction error (surprise)
+        if reward > 5:
             self.state = "Joyful"
         elif reward > 0:
             self.state = "Content"
-        else:
+        elif abs(pred_error) > 2.0:
+            self.state = "Anxious" # High surprise/error
+        elif reward <= -0.1:
             self.state = "Focused"
-
-# Stores the agent's experiences
-class Memory:
-    def __init__(self):
-        self.experiences = []
-
-    def add_experience(self, state, action, reward, next_state, done):
-        self.experiences.append((state, action, reward, next_state, done))
+        else:
+            self.state = "Neutral"
 
 # Handles Q-learning based decision making
 class DecisionMaking:
-    def __init__(self, actions, epsilon=0.1, alpha=0.1, gamma=0.9):
+    def __init__(self, actions, memory=None, epsilon=0.1, alpha=0.1, gamma=0.9):
         self.actions = actions
+        self.memory = memory
         self.epsilon = epsilon
         self.alpha = alpha
         self.gamma = gamma
@@ -90,15 +112,30 @@ class DecisionMaking:
     def get_q_value(self, state, action):
         return self.q_table.get((state, action), 0.0)
 
-    def choose_action(self, state):
+    def choose_action(self, state, lambda_bias=0.5):
+        # Exploration vs. Exploitation
         if random.uniform(0, 1) < self.epsilon:
             return random.choice(self.actions)
-        else:
-            q_values = [self.get_q_value(state, a) for a in self.actions]
-            max_q = max(q_values)
-            best_actions = [i for i, q in enumerate(q_values) if q == max_q]
-            action_index = random.choice(best_actions)
-            return self.actions[action_index]
+
+        # LTM-biased Exploitation
+        q_values = [self.get_q_value(state, a) for a in self.actions]
+
+        # Retrieve policy bias from semantic memory
+        bias_policy, sim = self.memory.retrieve_policy_bias(state)
+
+        if bias_policy:
+            # λ (lambda) is the confidence, here we use the similarity score
+            lambda_confidence = sim * lambda_bias
+
+            # Add bias to Q-values: Q_eff(a) = Q(a) + λ * bias(a)
+            for i, action in enumerate(self.actions):
+                q_values[i] += lambda_confidence * bias_policy.get(action, 0.0)
+
+        # Select best action based on biased Q-values
+        max_q = max(q_values)
+        best_actions = [i for i, q in enumerate(q_values) if q == max_q]
+        action_index = random.choice(best_actions)
+        return self.actions[action_index]
 
     def update_q_table(self, state, action, reward, next_state):
         old_q_value = self.get_q_value(state, action)
@@ -111,26 +148,59 @@ class DecisionMaking:
 class UDMM_Agent:
     def __init__(self, epsilon=0.1, alpha=0.1, gamma=0.9):
         self.perception = Perception()
-        self.intention = Intention()
-        self.emotion = Emotion()
-        self.memory = Memory()
+        # The new LTM memory system
+        self.memory = MemoryManager()
         self.actions = ["up", "down", "left", "right"]
-        self.decision = DecisionMaking(self.actions, epsilon, alpha, gamma)
+
+        # Pass memory to components that need it
+        self.emotion = Emotion(memory=self.memory)
+        self.intention = Intention(memory=self.memory)
+        self.decision = DecisionMaking(self.actions, memory=self.memory, epsilon=epsilon, alpha=alpha, gamma=gamma)
+
+        # Prediction module needs access to the decision module for Q-values
+        self.prediction = Prediction(decision_module=self.decision, memory=self.memory)
+
         self.current_pos = (0, 0)
+        self.time = 0 # To track step count for memory records
 
     def step(self, env):
+        self.time += 1
         current_state = self.perception.perceive(self.current_pos)
+
+        # 1. Decision Making
         action = self.decision.choose_action(current_state)
         
+        # 2. Prediction (before action)
+        predicted_next_q = self.prediction.predict_next_q(current_state) # Simplified: predict for current state's actions
+        current_q = self.decision.get_q_value(current_state, action)
+
+        # 3. Action and Perception
         reward, new_pos = env.step(action)
         self.current_pos = new_pos
         next_state = self.perception.perceive(new_pos)
         
-        self.emotion.update_emotion(reward)
-        done = (reward > 1) # Goal reached
+        # 4. Calculate Prediction Error
+        pred_err = self.prediction.calculate_error(reward, current_q, predicted_next_q, self.decision.gamma)
 
-        self.memory.add_experience(current_state, action, reward, next_state, done)
+        # 5. Update internal states
+        self.emotion.update_emotion(reward, pred_err)
+        self.intention.update_intention(self.emotion.state, pred_err)
+
+        # 6. Learning
         self.learn(current_state, action, reward, next_state)
+
+        # 7. Record experience in Long-Term Memory
+        self.memory.record(
+            state=current_state,
+            action=action,
+            reward=reward,
+            next_state=next_state,
+            pred=predicted_next_q,
+            pred_err=pred_err,
+            emotion=self.emotion.state,
+            intention=self.intention.state,
+            t=self.time
+        )
         
         return reward, self.emotion.state, self.current_pos
 
@@ -139,3 +209,4 @@ class UDMM_Agent:
 
     def reset(self):
         self.current_pos = (0, 0)
+        self.time = 0
