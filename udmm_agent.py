@@ -1,6 +1,8 @@
 import random
 import numpy as np
-from ltm_memory import MemoryManager
+from memory.episodic import EpisodicMemory
+from memory.semantic import SemanticMemory
+from memory.manager import MemoryManager
 
 # A simple model of the environment for the agent to interact with
 class Environment:
@@ -85,19 +87,36 @@ class Emotion:
     def __init__(self, memory=None):
         self.state = "Neutral"
         self.memory = memory # For long-term mood assessment
+        self.low_reward_streak = 0
 
-    def update_emotion(self, reward, pred_error):
-        # Emotions are now influenced by both reward and prediction error (surprise)
+    def update_emotion(self, reward, normalized_pred_error):
+        # Emotions are now influenced by reward, surprise (normalized), and streak
         if reward > 5:
             self.state = "Joyful"
-        elif reward > 0:
+            self.low_reward_streak = 0
+        elif abs(normalized_pred_error) > 1.5: # Anxious if error is > 1.5 std devs
+            self.state = "Anxious"
+            self.low_reward_streak = 0
+        elif reward < 0.1:
+            self.low_reward_streak += 1
+            if self.low_reward_streak > 50: # Threshold for boredom
+                self.state = "Bored"
+            else:
+                self.state = "Focused"
+        else: # Content
             self.state = "Content"
-        elif abs(pred_error) > 2.0:
-            self.state = "Anxious" # High surprise/error
-        elif reward <= -0.1:
-            self.state = "Focused"
-        else:
-            self.state = "Neutral"
+            self.low_reward_streak = 0
+
+    def get_exploration_rate(self, base_epsilon):
+        if self.state == "Anxious":
+            return min(base_epsilon * 2, 0.5)
+        elif self.state == "Bored":
+            return min(base_epsilon * 3, 0.7)
+        elif self.state == "Joyful":
+            return base_epsilon * 0.5
+        return base_epsilon
+
+from memory.manager import _to_vec # Import helper
 
 # Handles Q-learning based decision making
 class DecisionMaking:
@@ -112,30 +131,44 @@ class DecisionMaking:
     def get_q_value(self, state, action):
         return self.q_table.get((state, action), 0.0)
 
-    def choose_action(self, state, lambda_bias=0.5):
+    def choose_action(self, state, epsilon, lambda_bias=0.5, schema_confidence_threshold=0.7):
+        # Returns (action, source, confidence)
+        source, confidence = "Q", 1.0
+
         # Exploration vs. Exploitation
-        if random.uniform(0, 1) < self.epsilon:
-            return random.choice(self.actions)
+        if random.uniform(0, 1) < epsilon:
+            return random.choice(self.actions), "epsilon", epsilon
 
         # LTM-biased Exploitation
-        q_values = [self.get_q_value(state, a) for a in self.actions]
+        q_values = np.array([self.get_q_value(state, a) for a in self.actions])
 
-        # Retrieve policy bias from semantic memory
-        bias_policy, sim = self.memory.retrieve_policy_bias(state)
+        # Retrieve policy bias from semantic memory if available
+        if self.memory and self.memory.semantic:
+            state_vec = _to_vec(state)
+            query_results = self.memory.semantic.query(state_vec, k=1)
 
-        if bias_policy:
-            # λ (lambda) is the confidence, here we use the similarity score
-            lambda_confidence = sim * lambda_bias
+            if query_results:
+                sim, schema_id, schema = query_results[0]
+                schema_conf = schema.get("confidence", 0)
 
-            # Add bias to Q-values: Q_eff(a) = Q(a) + λ * bias(a)
-            for i, action in enumerate(self.actions):
-                q_values[i] += lambda_confidence * bias_policy.get(action, 0.0)
+                if sim > schema_confidence_threshold and schema_conf > 0.5:
+                    source = "schema"
+                    confidence = schema_conf * sim
+                    bias_policy = schema.get("action_model", {})
 
-        # Select best action based on biased Q-values
-        max_q = max(q_values)
-        best_actions = [i for i, q in enumerate(q_values) if q == max_q]
+                    bias_vector = np.array([bias_policy.get(a, 0.0) for a in self.actions])
+                    q_values += lambda_bias * confidence * bias_vector
+
+        # Select best action based on Q-values
+        max_q = np.max(q_values)
+        # Handle case where all Q-values are the same (e.g., at the start)
+        if np.all(q_values == q_values[0]):
+            best_actions = list(range(len(self.actions)))
+        else:
+            best_actions = np.where(q_values == max_q)[0]
+
         action_index = random.choice(best_actions)
-        return self.actions[action_index]
+        return self.actions[action_index], source, confidence
 
     def update_q_table(self, state, action, reward, next_state):
         old_q_value = self.get_q_value(state, action)
@@ -146,66 +179,123 @@ class DecisionMaking:
 
 # Represents the full agent combining all components
 class UDMM_Agent:
-    def __init__(self, epsilon=0.1, alpha=0.1, gamma=0.9):
+    def __init__(self, logger, config="full_ltm", epsilon=0.1, alpha=0.1, gamma=0.9):
+        self.config = config
+        self.logger = logger
         self.perception = Perception()
-        # The new LTM memory system
-        self.memory = MemoryManager()
         self.actions = ["up", "down", "left", "right"]
+        self.memory = None
 
-        # Pass memory to components that need it
+        if self.config == "full_ltm":
+            episodic = EpisodicMemory()
+            semantic = SemanticMemory()
+            self.memory = MemoryManager(episodic, semantic)
+        elif self.config == "episodic_only":
+            episodic = EpisodicMemory()
+            self.memory = MemoryManager(episodic, None)
+
         self.emotion = Emotion(memory=self.memory)
         self.intention = Intention(memory=self.memory)
         self.decision = DecisionMaking(self.actions, memory=self.memory, epsilon=epsilon, alpha=alpha, gamma=gamma)
-
-        # Prediction module needs access to the decision module for Q-values
         self.prediction = Prediction(decision_module=self.decision, memory=self.memory)
 
         self.current_pos = (0, 0)
-        self.time = 0 # To track step count for memory records
+        self.time = 0
+        self.episode_num = 0
+
+        # For PE normalization
+        self.pe_running_stats = {'mean': 0.0, 'std': 1.0, 'count': 0}
+
+    def _update_pe_stats(self, pe):
+        """ Welford's algorithm for online variance estimation. """
+        self.pe_running_stats['count'] += 1
+        count = self.pe_running_stats['count']
+        mean = self.pe_running_stats['mean']
+        M2 = (self.pe_running_stats['std'] ** 2) * (count - 1)
+
+        delta = pe - mean
+        mean += delta / count
+        delta2 = pe - mean
+        M2 += delta * delta2
+
+        self.pe_running_stats['mean'] = mean
+        if count > 1:
+            self.pe_running_stats['std'] = np.sqrt(M2 / (count -1))
+
+    def _normalize_pe(self, pe):
+        mean = self.pe_running_stats['mean']
+        std = self.pe_running_stats['std']
+        if std < 1e-6: return 0.0 # Avoid division by zero
+
+        normalized_pe = (pe - mean) / std
+        return np.clip(normalized_pe, -5.0, 5.0) # Clip to avoid extreme values
 
     def step(self, env):
         self.time += 1
         current_state = self.perception.perceive(self.current_pos)
 
-        # 1. Decision Making
-        action = self.decision.choose_action(current_state)
+        current_epsilon = self.emotion.get_exploration_rate(self.decision.epsilon)
+        action, source, conf = self.decision.choose_action(current_state, epsilon=current_epsilon)
         
-        # 2. Prediction (before action)
-        predicted_next_q = self.prediction.predict_next_q(current_state) # Simplified: predict for current state's actions
-        current_q = self.decision.get_q_value(current_state, action)
-
-        # 3. Action and Perception
         reward, new_pos = env.step(action)
         self.current_pos = new_pos
         next_state = self.perception.perceive(new_pos)
         
-        # 4. Calculate Prediction Error
-        pred_err = self.prediction.calculate_error(reward, current_q, predicted_next_q, self.decision.gamma)
+        pred_err = self.learn(current_state, action, reward, next_state, is_online=True)
 
-        # 5. Update internal states
-        self.emotion.update_emotion(reward, pred_err)
-        self.intention.update_intention(self.emotion.state, pred_err)
+        # Normalize PE
+        self._update_pe_stats(pred_err)
+        normalized_pe = self._normalize_pe(pred_err)
 
-        # 6. Learning
-        self.learn(current_state, action, reward, next_state)
+        # Update internal states with normalized PE
+        self.emotion.update_emotion(reward, normalized_pe)
+        self.intention.update_intention(self.emotion.state, normalized_pe)
 
-        # 7. Record experience in Long-Term Memory
-        self.memory.record(
-            state=current_state,
-            action=action,
-            reward=reward,
-            next_state=next_state,
-            pred=predicted_next_q,
-            pred_err=pred_err,
-            emotion=self.emotion.state,
-            intention=self.intention.state,
-            t=self.time
-        )
+        # Record experience in LTM with raw PE for priority calculation
+        if self.memory:
+            self.memory.episodic.add(current_state, action, reward, next_state, (reward > 1), pred_err)
+
+        # Log step data
+        log_data = {
+            "ep": self.episode_num, "step": self.time, "pe": float(pred_err), "pe_norm": float(normalized_pe),
+            "reward": reward, "dist_to_goal": np.linalg.norm(np.array(self.current_pos) - np.array(env.goal_pos)),
+            "emotion": self.emotion.state, "intention": self.intention.state,
+            "chose_from": source, "schema_id": None, "conf": conf,
+            "epsilon": current_epsilon
+        }
+        self.logger.log_step(log_data)
         
         return reward, self.emotion.state, self.current_pos
 
-    def learn(self, state, action, reward, next_state):
-        self.decision.update_q_table(state, action, reward, next_state)
+    def learn(self, state, action, reward, next_state, is_online=False):
+        # This function now calculates the new Q value and returns the TD error.
+        # It no longer updates the table directly for online learning, that's done once.
+        old_q = self.decision.get_q_value(state, action)
+        next_max_q = max([self.decision.get_q_value(next_state, a) for a in self.actions])
+
+        # Q-learning update rule
+        new_q = old_q + self.decision.alpha * (reward + self.decision.gamma * next_max_q - old_q)
+
+        # Update Q-table
+        self.decision.q_table[(state, action)] = new_q
+
+        # Return TD error
+        td_error = new_q - old_q
+        return td_error
+
+    def learn_from_batch(self, batch, weights):
+        """ Learns from a batch of experiences from memory. """
+        states, actions, rewards, next_states, _, _ = zip(*batch)
+
+        # Vectorized operations would be much faster in a real implementation (e.g., with PyTorch)
+        new_errors = []
+        for i in range(len(batch)):
+            # Here we apply the learning rule, but also multiply the update by the importance weight
+            # For simplicity, we just recalculate the error. A full DQN would use the weights in the loss function.
+            err = self.learn(states[i], actions[i], rewards[i], next_states[i])
+            new_errors.append(err)
+
+        return np.abs(new_errors)
 
     def reset(self):
         self.current_pos = (0, 0)
