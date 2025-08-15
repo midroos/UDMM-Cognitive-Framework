@@ -1,6 +1,7 @@
 from collections import deque, defaultdict
 import numpy as np
 import random
+import heapq
 
 # ========= أدوات مساعدة =========
 def _to_vec(state):
@@ -79,8 +80,8 @@ class EpisodicMemory:
         if not self.buffer:
             return []
         n = max(1, int(len(self.buffer) * (pct / 100.0)))
-        sorted_buf = sorted(self.buffer, key=lambda x: x["prio"], reverse=True)
-        return sorted_buf[:n]
+        # Use heapq.nlargest for much better performance than sorting the whole buffer
+        return heapq.nlargest(n, self.buffer, key=lambda x: x["prio"])
 
 
 # ========= الذاكرة الدلالية (مخططات بسيطة) =========

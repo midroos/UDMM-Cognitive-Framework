@@ -45,9 +45,11 @@ class RunningNorm:
             return 1.0
         return math.sqrt(max(self.M2 / (self.n - 1), self.eps))
 
-    def z(self, x):
+    def z(self, x, clip_value=1000.0):
         # z-score مطلق لتجنب الإشارة
-        return abs(x - self.mean) / (self.std + self.eps)
+        z_score = abs(x - self.mean) / (self.std + self.eps)
+        # Clip to prevent extreme values from causing inf/nan issues
+        return min(z_score, clip_value)
 
 
 class UDMMAgent:
@@ -129,7 +131,8 @@ class UDMMAgent:
 
         # تحديث Q
         new_q = old_q + self.alpha * td_error
-        self.q[(s, action)] = new_q
+        # Clip Q-value to prevent explosion
+        self.q[(s, action)] = max(-1e10, min(1e10, new_q))
 
         # تحديث إحصائيات خطأ التنبؤ ثم حساب نسخة مُطبّعة
         self.pe_stats.update(abs(td_error))
@@ -156,7 +159,7 @@ class UDMMAgent:
         if self.use_ltm:
             self.memory.finish_episode()
             # ترسيخ: استخراج/تحديث مخططات دلالية + فهرسة
-            # self.memory.consolidate()  # <-- Temporarily disabled for debugging
+            self.memory.consolidate()
             # Replay موجّه
             self.memory.prioritized_replay(self, steps=256)
 
@@ -173,4 +176,6 @@ class UDMMAgent:
         td_error = td_target - old_q
         # وزن الأهمية يُؤثر على سرعة التعلم في التحديث offline
         lr = self.alpha * float(weight)
-        self.q[(s_key, a)] = old_q + lr * td_error
+        new_q = old_q + lr * td_error
+        # Clip Q-value to prevent explosion
+        self.q[(s_key, a)] = max(-1e10, min(1e10, new_q))

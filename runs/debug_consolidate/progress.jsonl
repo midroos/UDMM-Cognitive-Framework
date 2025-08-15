@@ -1,0 +1,5 @@
+{"episode": 1, "reward": -1.799999999999974, "steps": 119, "done": true}
+{"episode": 2, "reward": -50.00000000000044, "steps": 500, "done": false}
+{"episode": 3, "reward": -50.00000000000044, "steps": 500, "done": false}
+{"episode": 4, "reward": -50.00000000000044, "steps": 500, "done": false}
+{"episode": 5, "reward": -50.00000000000044, "steps": 500, "done": false}
