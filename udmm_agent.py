@@ -87,6 +87,12 @@ class UDMMAgent:
         # عدّاد داخلي للخطوات
         self._t = 0
 
+        # --- Diagnostic Metrics ---
+        self.schema_uses_episode = 0
+        self.decisions_episode = 0
+        self.confidence_episode = 0.0
+        self.q_delta_episode = 0.0
+
     # ====== واجهات مطلوبة من run.py ======
     def select_action(self, state):
         """
@@ -103,18 +109,49 @@ class UDMMAgent:
         # Q-values الأساسية
         q_vals = {a: self.q.get((state_key, a), 0.0) for a in self.actions}
 
+        q_vals_base = q_vals.copy()
+        self.decisions_episode += 1
+
         # انحياز من الذاكرة الدلالية (إن وُجد)
         if self.use_ltm:
             bias_policy, confidence = self.memory.retrieve_policy_bias(state)
-            if bias_policy:
+            # --- Decision Gating: Part 1 ---
+            # Only apply bias if confidence is high enough
+            if bias_policy and confidence > 0.6: # New confidence threshold
+                self.schema_uses_episode += 1
+                self.confidence_episode += confidence
+
+                max_q_before_bias = max(q_vals_base.values())
+
                 lam = self.bias_scale * float(max(min(confidence, 1.0), 0.0))
                 for a in self.actions:
                     q_vals[a] += lam * float(bias_policy.get(a, 0.0))
 
+                max_q_after_bias = max(q_vals.values())
+                self.q_delta_episode += (max_q_after_bias - max_q_before_bias)
+
         # اختيار أفضل فعل
         max_q = max(q_vals.values())
         best_actions = [a for a, v in q_vals.items() if v == max_q]
-        return random.choice(best_actions)
+
+        # --- Decision Gating: Part 2 (No-Regret Rule) ---
+        if best_actions:
+            best_action_candidate = random.choice(best_actions)
+
+            # Find the best action without bias
+            max_q_base = max(q_vals_base.values())
+            best_base_actions = [a for a, v in q_vals_base.items() if v == max_q_base]
+
+            # If the biased choice was originally bad, and there was a better choice, revert.
+            # Define "bad" as having a Q-value lower than the best base Q-value.
+            if q_vals_base[best_action_candidate] < max_q_base and best_action_candidate not in best_base_actions:
+                # The bias is suggesting a suboptimal action. Revert to the best non-biased action.
+                return random.choice(best_base_actions)
+
+            return best_action_candidate
+
+        # Fallback in case best_actions is empty (should not happen with fixes, but for safety)
+        return random.choice(self.actions)
 
     def learn(self, state, action, reward, next_state, done):
         """
@@ -155,13 +192,29 @@ class UDMMAgent:
         """
         تُستدعى بعد انتهاء كل حلقة.
         في وضع LTM: إغلاق الحلقة، ترسيخ، وتعليم Offline بالـ replay.
+        Also calculates and returns diagnostic metrics for the episode.
         """
+        # Calculate final diagnostic metrics for the episode
+        diagnostics = {
+            "schema_usage_rate": (self.schema_uses_episode / self.decisions_episode) if self.decisions_episode > 0 else 0,
+            "avg_bias_confidence": (self.confidence_episode / self.schema_uses_episode) if self.schema_uses_episode > 0 else 0,
+            "avg_q_delta": (self.q_delta_episode / self.schema_uses_episode) if self.schema_uses_episode > 0 else 0
+        }
+
+        # Reset counters
+        self.schema_uses_episode = 0
+        self.decisions_episode = 0
+        self.confidence_episode = 0.0
+        self.q_delta_episode = 0.0
+
         if self.use_ltm:
-            self.memory.finish_episode()
+            self.memory.finish_episode(gamma=self.gamma)
             # ترسيخ: استخراج/تحديث مخططات دلالية + فهرسة
             self.memory.consolidate()
             # Replay موجّه
             self.memory.prioritized_replay(self, steps=256)
+
+        return diagnostics
 
     # ====== واجهات يستخدمها الـ MemoryManager في replay ======
     def _q_update_offline(self, s, a, r, s2, done, weight=1.0):

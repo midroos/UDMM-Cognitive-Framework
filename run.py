@@ -70,14 +70,15 @@ def main():
                 steps += 1
 
             # تحديث الذاكرة بعد كل حلقة
-            agent.end_episode()
+            diagnostics = agent.end_episode()
 
             # حفظ بيانات الحلقة
             log_entry = {
                 "episode": episode,
                 "reward": total_reward,
                 "steps": steps,
-                "done": done
+                "done": done,
+                **diagnostics # Add new diagnostic metrics
             }
             log_f.write(json.dumps(log_entry) + "\n")
 

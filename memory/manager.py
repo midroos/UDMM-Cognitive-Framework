@@ -54,7 +54,17 @@ class EpisodicMemory:
         # تخزين مبدئي في الحلقة المؤقتة
         self.episode_tmp.append(rec)
 
-    def end_episode(self):
+    def end_episode(self, gamma=0.95):
+        # Calculate cumulative returns for the episode
+        if not self.episode_tmp:
+            return
+
+        cumulative_return = 0
+        for i in reversed(range(len(self.episode_tmp))):
+            rec = self.episode_tmp[i]
+            cumulative_return = rec['r'] + gamma * cumulative_return
+            rec['cumulative_return'] = cumulative_return
+
         # عند نهاية الحلقة: أضف الخطوات إلى المخزن العالمي مع إخلاء الأدنى أولوية عند الحاجة
         for rec in self.episode_tmp:
             if len(self.buffer) < self.capacity:
@@ -117,9 +127,10 @@ class SemanticMemory:
         success = 0
         for rec in samples:
             a = rec["a"]
-            r = rec["r"]
-            score[a] += float(r)
-            if r > 0:
+            # Use cumulative_return for building schemas, not immediate reward
+            ret = rec.get("cumulative_return", rec["r"])
+            score[a] += float(ret)
+            if ret > 0: # Success is now based on positive cumulative return
                 success += 1
         total = sum(abs(v) for v in score.values()) or 1.0
         policy = {a: (v / total) for a, v in score.items()}
@@ -176,8 +187,8 @@ class MemoryManager:
             done=done, pe_norm=pred_err_norm
         )
 
-    def finish_episode(self):
-        self.epi.end_episode()
+    def finish_episode(self, gamma=0.95):
+        self.epi.end_episode(gamma=gamma)
 
     # ترسيخ: استخرج عينات عالية الأولوية وحدّث المخططات
     def consolidate(self, top_pct=20, clusters=4):
