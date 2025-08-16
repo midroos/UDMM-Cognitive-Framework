@@ -5,7 +5,8 @@ import random
 import numpy as np
 from datetime import datetime
 from udmm_agent import UDMMAgent
-from envs.trap_env import TrapEnvironment  # تأكد أن البيئة موجودة أو عدّل المسار
+from envs.trap_env import TrapEnvironment
+from envs.trap_env_infinite import InfiniteTrapEnvironment
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Run UDMM Agent with LTM configs")
@@ -42,6 +43,8 @@ def main():
     # تهيئة البيئة
     if args.env == "trap":
         env = TrapEnvironment()
+    elif args.env == "infinite_trap":
+        env = InfiniteTrapEnvironment(seed=args.seed)
     else:
         raise ValueError(f"Unsupported environment: {args.env}")
 

@@ -3,6 +3,11 @@ import random
 import numpy as np
 
 try:
+    from world_model import WorldModel, _pos_from_state
+except Exception:
+    WorldModel = None
+
+try:
     # يتوقع أن يكون الملف في memory/manager.py
     from memory.manager import MemoryManager
 except Exception:
@@ -86,6 +91,8 @@ class UDMMAgent:
 
         # عدّاد داخلي للخطوات
         self._t = 0
+        self.intrinsic_beta = 0.5   # يمكن ضبطها من config لاحقاً
+        self.world = WorldModel() if WorldModel is not None else None
 
         # --- Diagnostic Metrics ---
         self.schema_uses_episode = 0
@@ -130,6 +137,15 @@ class UDMMAgent:
                 max_q_after_bias = max(q_vals.values())
                 self.q_delta_episode += (max_q_after_bias - max_q_before_bias)
 
+        # تحيّز نموذج العالم نحو خلايا مجهولة
+        if self.world is not None:
+            ax, ay = _pos_from_state(state)
+            deltas = {"up": (0,-1), "down": (0,1), "left":(-1,0), "right":(1,0)}
+            for a, (dx,dy) in deltas.items():
+                if a in self.actions:
+                    nx, ny = ax+dx, ay+dy
+                    q_vals[a] += 0.05 * self.world.neighbor_bonus((nx, ny))
+
         # اختيار أفضل فعل
         max_q = max(q_vals.values())
         best_actions = [a for a, v in q_vals.items() if v == max_q]
@@ -161,9 +177,18 @@ class UDMMAgent:
         s = _hashable_state(state)
         s2 = _hashable_state(next_state)
 
+        intrinsic = 0.0
+        if self.world is not None:
+            try:
+                intrinsic = self.world.observe_transition(state, action, reward, next_state, done)
+            except Exception:
+                intrinsic = 0.0
+
+        r_total = reward + self.intrinsic_beta * intrinsic
+
         old_q = self.q.get((s, action), 0.0)
         max_next = 0.0 if done else max(self.q.get((s2, a), 0.0) for a in self.actions)
-        td_target = reward + (0.0 if done else self.gamma * max_next)
+        td_target = r_total + (0.0 if done else self.gamma * max_next)
         td_error = td_target - old_q
 
         # تحديث Q
