@@ -1,92 +1,63 @@
-import argparse
 import os
 import json
-import random
-import numpy as np
-from datetime import datetime
-from udmm_agent import UDMMAgent
-from envs.trap_env import TrapEnvironment  # تأكد أن البيئة موجودة أو عدّل المسار
+from trap_env import TrapEnv
+from agent.udmm_agent import UDMMAgent
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Run UDMM Agent with LTM configs")
-    parser.add_argument("--env", type=str, default="trap", help="Environment name")
-    parser.add_argument("--config", type=str, default="full_ltm", choices=["full_ltm", "no_ltm"], help="Agent configuration")
-    parser.add_argument("--episodes", type=int, default=200, help="Number of episodes")
-    parser.add_argument("--seed", type=int, default=42, help="Random seed")
-    parser.add_argument("--run_name", type=str, default=None, help="Name for the run folder")
-    return parser.parse_args()
+def run_experiment(agent, env, num_episodes, run_name):
+    print(f"Starting experiment: {run_name} for {num_episodes} episodes.")
 
-def set_seed(seed):
-    random.seed(seed)
-    np.random.seed(seed)
+    # Setup logging directory
+    log_dir = f"runs/{run_name}"
+    os.makedirs(log_dir, exist_ok=True)
+    log_file_path = f"{log_dir}/progress.jsonl"
 
-def create_run_dir(run_name):
-    run_dir = os.path.join("runs", run_name)
-    os.makedirs(run_dir, exist_ok=True)
-    return run_dir
+    with open(log_file_path, "w") as f:
+        f.write("") # Clear old logs
 
-def main():
-    args = parse_args()
-    set_seed(args.seed)
+    for episode in range(num_episodes):
+        state, info = env.reset()
+        done = False
+        steps = 0
+        total_reward = 0
 
-    # تحديد اسم التجربة
-    if args.run_name is None:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        run_name = f"{args.env}_{args.config}_{timestamp}"
-    else:
-        run_name = args.run_name
+        while not done and steps < 500:
+            action = agent.select_action(state)
+            next_state, reward, done, _ = env.step(action)
+            agent.learn(state, action, reward, next_state, done)
 
-    run_dir = create_run_dir(run_name)
-    log_file = os.path.join(run_dir, "progress.jsonl")
+            state = next_state
+            total_reward += reward
+            steps += 1
 
-    # تهيئة البيئة
-    if args.env == "trap":
-        env = TrapEnvironment()
-    else:
-        raise ValueError(f"Unsupported environment: {args.env}")
+            # Print symbolic representation every 50 steps for a glimpse
+            if steps % 50 == 0:
+                print(f"[{episode+1}] Step {steps}: {agent.identity.narrative()}")
 
-    # تهيئة الوكيل
-    agent = UDMMAgent(config=args.config)
+        agent.end_episode()
 
-    print(f"Running {args.episodes} episodes on {args.env} with config: {args.config}")
-    print(f"Logs will be saved in: {log_file}")
+        # Log episode results
+        log_entry = {
+            "episode": episode,
+            "reward": total_reward,
+            "steps": steps,
+            "success": "Goal Reached" if done else "Max Steps",
+            "identity": agent.identity.as_dict(),
+            "symbolic_description": agent.identity.describe_self(),
+            "narrative": agent.identity.narrative(),
+            "gap_to_ideal": agent.identity.self_gap(),
+        }
 
-    # تشغيل الحلقات
-    with open(log_file, "w") as log_f:
-        for episode in range(1, args.episodes + 1):
-            state = env.reset()
-            done = False
-            total_reward = 0
-            steps = 0
+        with open(log_file_path, "a") as f:
+            f.write(json.dumps(log_entry) + "\n")
 
-            max_steps = 500  # Set a limit to prevent infinite loops
-            while not done and steps < max_steps:
-                action = agent.select_action(state)
-                next_state, reward, done = env.step(action)
-                agent.learn(state, action, reward, next_state, done)
+        print(f"Episode {episode+1}/{num_episodes} finished. Total Reward: {total_reward:.2f}, Steps: {steps}")
+        print(f"Identity at end of episode: {agent.identity}")
+        print("-" * 50)
 
-                state = next_state
-                total_reward += reward
-                steps += 1
-
-            # تحديث الذاكرة بعد كل حلقة
-            diagnostics = agent.end_episode()
-
-            # حفظ بيانات الحلقة
-            log_entry = {
-                "episode": episode,
-                "reward": total_reward,
-                "steps": steps,
-                "done": done,
-                **diagnostics # Add new diagnostic metrics
-            }
-            log_f.write(json.dumps(log_entry) + "\n")
-
-            # طباعة تقدم بسيط
-            if episode % 10 == 0:
-                print(f"Episode {episode}: Reward={total_reward}, Steps={steps}")
-
-    print(f"Run completed. Logs saved at {log_file}")
+    print(f"Experiment {run_name} completed.")
 
 if __name__ == "__main__":
-    main()
+    actions = ["up", "down", "left", "right"]
+    env = TrapEnv(size=10, num_traps=5)
+    agent = UDMMAgent(actions=actions)
+    run_experiment(agent, env, num_episodes=500, run_name="jules_self_aware_agent")
