@@ -41,12 +41,7 @@ def run_experiment(agent, env, num_episodes, run_name):
                     "success_rate": 1.0 if agent._episode_success else 0.0,
                     "recent_risk": 1.0 if agent._episode_traps > 0 else 0.0,
                 })
-                narrative_text = agent.narrative_engine.generate(
-                    intent=current_intent,
-                    identity=agent.identity,
-                    confidence=world_conf
-                )
-                print(f"[{episode+1}] Step {steps}: {narrative_text}")
+                pass
 
         agent.end_episode()
 
@@ -67,7 +62,9 @@ def run_experiment(agent, env, num_episodes, run_name):
                 confidence=world_conf
             ),
             "gap_to_ideal": agent.identity.self_gap(),
-            "ideal_self": agent.identity.ideal_self, # NEW: log ideal self
+            "ideal_self": agent.identity.ideal_self,
+            "ambition_patience": agent.identity._ambition_patience_counter,
+            "frustration": agent.identity.last_frustration,
             "world_fit": {"world": best_world, "confidence": round(world_conf, 3)}
         }
 
@@ -75,14 +72,22 @@ def run_experiment(agent, env, num_episodes, run_name):
             f.write(json.dumps(log_entry) + "\n")
 
         print(f"Episode {episode+1}/{num_episodes} finished. Total Reward: {total_reward:.2f}, Steps: {steps}")
-        print(f"Final Identity at end of episode: {agent.identity.describe_self()}")
-        print(f"Final Ideal Self: {agent.identity.ideal_self}")
-        print("-" * 50)
 
     print(f"Experiment {run_name} completed.")
 
+import argparse
+
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run UDMM Agent Experiment")
+    parser.add_argument("--run_name", type=str, default="jules_udmm_self_aware_final", help="Name of the experiment run.")
+    parser.add_argument("--ambition_plasticity", type=float, default=0.05, help="Ambition plasticity learning rate.")
+    args = parser.parse_args()
+
     actions = ["up", "down", "left", "right"]
     env = TrapEnv(size=10, num_traps=5)
     agent = UDMMAgent(actions=actions)
-    run_experiment(agent, env, num_episodes=500, run_name="jules_udmm_self_aware_final")
+
+    # Set the ambition plasticity from the command line
+    agent.identity.cfg.ambition_plasticity = args.ambition_plasticity
+
+    run_experiment(agent, env, num_episodes=500, run_name=args.run_name)

@@ -98,6 +98,7 @@ class SelfIdentity:
     _recent_gaps: deque = field(default_factory=lambda: deque(maxlen=20), repr=False)
     _recent_rewards: deque = field(default_factory=lambda: deque(maxlen=20), repr=False)
     _ambition_patience_counter: int = field(default=0, repr=False)
+    last_frustration: float = field(default=0.0, repr=False)
 
     def to_action_modifiers(self) -> Dict[str, float]:
         gap = self.self_gap_score()
@@ -164,6 +165,7 @@ class SelfIdentity:
 
         window_gap_avg = sum(self._recent_gaps) / max(1, len(self._recent_gaps))
         frustration = self._compute_frustration(episode_reward, window_gap_avg)
+        self.last_frustration = frustration
 
         if frustration >= self.cfg.ambition_frustration_thr:
             self._ambition_patience_counter += 1

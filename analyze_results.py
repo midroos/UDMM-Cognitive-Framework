@@ -34,6 +34,9 @@ df['gap_risk_tolerance'] = df['gap_to_ideal'].apply(lambda x: safe_get(x, ['risk
 df['gap_consistency'] = df['gap_to_ideal'].apply(lambda x: safe_get(x, ['consistency']))
 df['gap_goal_alignment'] = df['gap_to_ideal'].apply(lambda x: safe_get(x, ['goal_alignment']))
 
+df['frustration'] = df['frustration']
+df['ambition_patience'] = df['ambition_patience']
+
 # Fill NaN values that may result from safe_get
 df.fillna(method='ffill', inplace=True)
 df.fillna(method='bfill', inplace=True)
@@ -43,10 +46,10 @@ df['total_gap'] = df[['gap_curiosity', 'gap_risk_tolerance', 'gap_consistency', 
 
 # Plotting
 plt.style.use('seaborn-v0_8-whitegrid')
-fig, axs = plt.subplots(4, 1, figsize=(15, 20), sharex=True)
+fig, axs = plt.subplots(5, 1, figsize=(15, 24), sharex=True)
 
 # 1. Personality Trait and Ideal Self Evolution
-axs[0].set_title('Personality Trait and Ideal Self Evolution over 500 Episodes', fontsize=16)
+axs[0].set_title('Personality Trait and Ideal Self Evolution', fontsize=16)
 axs[0].plot(df['episode'], df['curiosity'], label='Actual Curiosity', color='blue')
 axs[0].plot(df['episode'], df['ideal_curiosity'], label='Ideal Curiosity', linestyle='--', color='lightblue')
 axs[0].plot(df['episode'], df['risk_tolerance'], label='Actual Risk Tolerance', color='red')
@@ -75,7 +78,16 @@ axs[3].plot(df['episode'], df['steps'], label='Steps per Episode', color='orange
 axs[3].plot(df['episode'], df['steps'].rolling(window=50).mean(), label='50-Episode Moving Average', color='darkorange')
 axs[3].legend(loc='center left', bbox_to_anchor=(1, 0.5))
 axs[3].set_ylabel('Steps')
-axs[3].set_xlabel('Episode')
+
+# 5. Frustration and Patience
+axs[4].set_title('Frustration and Patience Dynamics', fontsize=16)
+axs[4].plot(df['episode'], df['frustration'], label='Frustration', color='purple')
+axs[4].plot(df['episode'], df['ambition_patience'] / df['ambition_patience'].max(), label='Patience (Normalized)', linestyle='--', color='gray')
+axs[4].axhline(y=0.35, color='r', linestyle=':', label='Frustration Threshold (0.35)')
+axs[4].legend(loc='center left', bbox_to_anchor=(1, 0.5))
+axs[4].set_ylabel('Value')
+axs[4].set_xlabel('Episode')
+
 
 plt.tight_layout()
 plt.savefig('final_analysis.png')
