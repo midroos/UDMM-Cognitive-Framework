@@ -1,25 +1,28 @@
 import numpy as np
-from collections import defaultdict
+from collections import defaultdict, deque
 import random
-from identity.self_identity import SelfIdentity
+from identity.self_identity_system import SelfIdentity, NarrativeEngine
 from .ltm import LongTermMemory, SemanticSchema
 
+# Helper function
+def _hashable_state(state):
+    return tuple(state) if isinstance(state, np.ndarray) else state
+
 class UDMMAgent:
-    def __init__(self, actions, lr=0.1, gamma=0.99, epsilon=0.1, bias_scale=0.5, use_ltm=True, name="UDMM-Agent"):
+    def __init__(self, actions, lr=0.1, gamma=0.99, use_ltm=True, name="UDMM-Agent"):
         self.lr = lr
         self.gamma = gamma
-        self.epsilon = epsilon
-        self.base_epsilon = epsilon
-        self.bias_scale = bias_scale
-        self.base_bias_scale = bias_scale
         self.use_ltm = use_ltm
         self.memory = LongTermMemory() if use_ltm else None
         self.actions = actions
         self.q = defaultdict(float)
         self.name = name
+
+        # Integrated Self-Awareness Systems
         self.identity = SelfIdentity()
-        self._episode_action_changes = 0
-        self._last_action = None
+        self.narrative_engine = NarrativeEngine()
+
+        # Diagnostics
         self._episode_reward = 0.0
         self._episode_steps = 0
         self._episode_success = False
@@ -37,42 +40,39 @@ class UDMMAgent:
 
         if random.random() < ep:
             a = random.choice(self.actions)
-            self._track(a)
             return a
 
         q_vals = {a: self.q.get((state_key, a), 0.0) for a in self.actions}
 
         if self.use_ltm:
             bias_policy, confidence = self.memory.retrieve_policy_bias(state)
-            if bias_policy and confidence >= mods["conf_thr"]:
+            if bias_policy and confidence >= 0.6: # A fixed threshold for now
                 lam = mods["bias_scale"]
-                if max(q_vals.values()) - q_vals.get(bias_policy[0], -np.inf) > mods["no_regret_margin"]:
-                    pass
-                else:
-                    for a in self.actions:
-                        q_vals[a] += lam * float(bias_policy.get(a, 0.0))
+                for a in self.actions:
+                    q_vals[a] += lam * float(bias_policy.get(a, 0.0))
 
         max_q = max(q_vals.values())
         best_actions = [a for a, v in q_vals.items() if v == max_q]
         a = random.choice(best_actions)
-        self._track(a)
         return a
 
-    def end_episode(self):
+    def end_episode(self, current_info=None):
         if self.use_ltm:
             self.memory.finish_episode()
             self.memory.consolidate()
             self.memory.prioritized_replay(self, steps=256)
 
-        ep_novelty = getattr(self, "_episode_novelty", 0.0)
-        map_gap_delta = getattr(self, "_episode_map_gap_delta", 0.0)
-        ep_reward = getattr(self, "_episode_reward", 0.0)
-        ep_steps = getattr(self, "_episode_steps", 0)
-        ep_success = getattr(self, "_episode_success", False)
-        ep_traps = getattr(self, "_episode_traps", 0)
-        diag_schema_usage = getattr(self, "_diag_schema_usage", 0.0)
-        diag_bias_conf = getattr(self, "_diag_bias_conf", 0.0)
+        # Get signals for identity update
+        ep_novelty = self._episode_novelty
+        map_gap_delta = self._episode_map_gap_delta
+        ep_reward = self._episode_reward
+        ep_steps = self._episode_steps
+        ep_success = self._episode_success
+        ep_traps = self._episode_traps
+        diag_schema_usage = self._diag_schema_usage
+        diag_bias_conf = self._diag_bias_conf
 
+        # Update self-identity traits based on episode experience
         self.identity.update_from_episode(
             reward=ep_reward,
             steps=ep_steps,
@@ -84,6 +84,7 @@ class UDMMAgent:
             bias_confidence=diag_bias_conf,
         )
 
+        # Reset episode-specific diagnostics
         self._episode_novelty = 0.0
         self._episode_map_gap_delta = 0.0
         self._episode_reward = 0.0
@@ -92,7 +93,6 @@ class UDMMAgent:
         self._episode_traps = 0
         self._diag_schema_usage = 0.0
         self._diag_bias_conf = 0.0
-        self._last_action = None
 
     def learn(self, state, action, reward, next_state, done):
         state_key = _hashable_state(state)
@@ -106,31 +106,19 @@ class UDMMAgent:
         if not done:
             future_q = max(self.q.get((next_state_key, a), 0.0) for a in self.actions)
 
-        intrinsic = 0.0
-        mods = self.identity.to_action_modifiers()
         if self.use_ltm and self.memory:
             novelty_est = self.memory.estimate_novelty(next_state)
             map_gap_delta = self.memory.update_map_and_get_gap(next_state)
-            intrinsic = mods["novelty_coeff"] * novelty_est + mods["map_gap_coeff"] * max(0.0, map_gap_delta)
+            self._episode_novelty += novelty_est
+            self._episode_map_gap_delta += map_gap_delta
 
-            self._episode_novelty = getattr(self, "_episode_novelty", 0.0) + novelty_est
-            self._episode_map_gap_delta = getattr(self, "_episode_map_gap_delta", 0.0) + map_gap_delta
-
-        td_target = reward + intrinsic + self.gamma * future_q
+        td_target = reward + self.gamma * future_q
         td_error = td_target - current_q
         self.q[(state_key, action)] += self.lr * td_error
 
-        self._episode_reward = getattr(self, "_episode_reward", 0.0) + float(reward)
-        self._episode_steps = getattr(self, "_episode_steps", 0) + 1
+        self._episode_reward += float(reward)
+        self._episode_steps += 1
         if done:
             self._episode_success = bool(self._episode_success or reward > 0)
         if reward < 0:
-            self._episode_traps = getattr(self, "_episode_traps", 0) + 1
-
-    def _track(self, a):
-        if self._last_action is not None and a != self._last_action:
-            self._episode_action_changes += 1
-        self._last_action = a
-
-def _hashable_state(state):
-    return tuple(state) if isinstance(state, np.ndarray) else state
+            self._episode_traps += 1
