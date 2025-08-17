@@ -2,9 +2,37 @@ import random
 import math
 import json
 from typing import Dict, Any, Optional
+from dataclasses import dataclass, field
+from collections import deque
 
 # ------------------------------
-# SymbolicSelf: تمثيل شبكي مبسط للذات الرمزية
+# IdentityConfig: إعدادات النظام
+# ------------------------------
+@dataclass
+class IdentityConfig:
+    adapt_lr: float = 0.05
+    decay: float = 0.002
+    min_v: float = 0.0
+    max_v: float = 1.0
+    eps_base: float = 0.10
+    bias_base: float = 0.50
+    gate_sim_thr: float = 0.60
+    gate_conf_thr: float = 0.60
+    no_regret_margin: float = 0.15
+    novelty_bonus: float = 0.10
+    map_gap_bonus: float = 0.08
+    plasticity_anneal: float = 0.0005
+
+    # NEW: ambition/ideal-self adaptation params
+    ambition_plasticity: float = 0.05
+    ambition_patience: int = 8
+    ambition_decrease_step: float = 0.05
+    ambition_increase_step: float = 0.03
+    ambition_frustration_thr: float = 0.35
+    ambition_reward_thr: float = 0.6
+
+# ------------------------------
+# SymbolicSelf: تمثيل شبكي للذات
 # ------------------------------
 class SymbolicSelf:
     def __init__(self):
@@ -51,21 +79,25 @@ class SymbolicSelf:
 # ------------------------------
 # SelfIdentity: سمات سلوكية قابلة للتحديث + آليات ميتا
 # ------------------------------
+@dataclass
 class SelfIdentity:
-    def __init__(self):
-        self.curiosity = 0.55
-        self.consistency = 0.55
-        self.risk_tolerance = 0.50
-        self.goal_alignment = 0.60
-        self.ideal_self = {
-            "curiosity": 0.80,
-            "risk_tolerance": 0.70,
-            "consistency": 0.60,
-            "goal_alignment": 0.90
-        }
-        self.adapt_lr = 0.05
-        self.plasticity_anneal = 0.0005
-        self.episodes = 0
+    curiosity: float = 0.55
+    consistency: float = 0.55
+    risk_tolerance: float = 0.50
+    goal_alignment: float = 0.60
+
+    cfg: IdentityConfig = field(default_factory=IdentityConfig)
+    episodes: int = 0
+    ideal_self: Dict[str, float] = field(default_factory=lambda: {
+        "curiosity": 0.8,
+        "risk_tolerance": 0.7,
+        "consistency": 0.6,
+        "goal_alignment": 0.9,
+    })
+
+    _recent_gaps: deque = field(default_factory=lambda: deque(maxlen=20), repr=False)
+    _recent_rewards: deque = field(default_factory=lambda: deque(maxlen=20), repr=False)
+    _ambition_patience_counter: int = field(default=0, repr=False)
 
     def to_action_modifiers(self) -> Dict[str, float]:
         gap = self.self_gap_score()
@@ -84,7 +116,9 @@ class SelfIdentity:
         return {
             "epsilon": eps,
             "bias_scale": bias_scale,
-            "meta_gap": gap
+            "meta_gap": gap,
+            "novelty_coeff": 0.10 * (0.75 + 0.5 * self.curiosity),
+            "map_gap_coeff": 0.08 * (0.60 + 0.6 * self.consistency),
         }
 
     def choose_intent(self, signals: Dict[str, float]) -> str:
@@ -104,7 +138,7 @@ class SelfIdentity:
     def update_from_episode(self, reward: float, steps: int, success: bool,
                             novelty_est: float, map_gap_delta: float, trap_events: int,
                             schema_usage_rate: float, bias_confidence: float):
-        lr = max(1e-4, self.adapt_lr - self.episodes * self.plasticity_anneal)
+        lr = max(1e-4, self.cfg.adapt_lr - self.episodes * self.cfg.plasticity_anneal)
 
         d_cur = +0.7 * novelty_est + 0.5 * max(0.0, map_gap_delta) - 0.6 * min(1.0, trap_events / 5.0)
         d_con = +0.4 * schema_usage_rate + 0.5 * bias_confidence + (0.25 if success else -0.2)
@@ -118,6 +152,43 @@ class SelfIdentity:
         self.goal_alignment = self._clamp(self.goal_alignment + lr * d_goal)
 
         self.episodes += 1
+
+    def _compute_frustration(self, episode_reward: float, gap_score: float) -> float:
+        norm_reward = 1.0 / (1.0 + math.exp(-0.1 * (episode_reward)))
+        frustration = gap_score * (1.0 - norm_reward)
+        return float(min(max(frustration, 0.0), 1.0))
+
+    def update_ideal_self(self, episode_reward: float, current_gap_score: float, recent_success_rate: float) -> None:
+        self._recent_gaps.append(current_gap_score)
+        self._recent_rewards.append(episode_reward)
+
+        window_gap_avg = sum(self._recent_gaps) / max(1, len(self._recent_gaps))
+        frustration = self._compute_frustration(episode_reward, window_gap_avg)
+
+        if frustration >= self.cfg.ambition_frustration_thr:
+            self._ambition_patience_counter += 1
+        else:
+            self._ambition_patience_counter = max(0, self._ambition_patience_counter - 1)
+
+        if self._ambition_patience_counter >= self.cfg.ambition_patience and recent_success_rate < 0.5:
+            for key in self.ideal_self.keys():
+                current_val = getattr(self, key, None)
+                if current_val is None:
+                    continue
+                base_step = self.cfg.ambition_decrease_step * self.cfg.ambition_plasticity
+                delta = (current_val - self.ideal_self[key]) * base_step
+                self.ideal_self[key] = self._clamp(self.ideal_self[key] + delta)
+            self._ambition_patience_counter = self.cfg.ambition_patience // 2
+
+        avg_reward_recent = sum(self._recent_rewards) / max(1, len(self._recent_rewards))
+        if avg_reward_recent >= self.cfg.ambition_reward_thr and recent_success_rate >= 0.6:
+            for key in self.ideal_self.keys():
+                inc = self.cfg.ambition_increase_step * self.cfg.ambition_plasticity
+                current_val = getattr(self, key, None)
+                if current_val is None:
+                    continue
+                target = min(self.cfg.max_v, self.ideal_self[key] + inc * (1.0 - self.ideal_self[key]))
+                self.ideal_self[key] = self._clamp(target)
 
     def self_gap(self) -> Dict[str, float]:
         return {

@@ -14,7 +14,6 @@ def run_experiment(agent, env, num_episodes, run_name):
     with open(log_file_path, "w") as f:
         f.write("")
 
-    # Initialize symbolic systems
     symbolic_self = SymbolicSelf()
     world_manager = WorldManager()
 
@@ -24,7 +23,6 @@ def run_experiment(agent, env, num_episodes, run_name):
         steps = 0
         total_reward = 0
 
-        # Get symbolic info for narrative generation
         best_world, world_conf = world_manager.get_best_for(symbolic_self)
 
         while not done and steps < 500:
@@ -40,8 +38,8 @@ def run_experiment(agent, env, num_episodes, run_name):
                 current_intent = agent.identity.choose_intent({
                     "map_gap": agent.memory.update_map_and_get_gap(state) if agent.memory else 0,
                     "novelty": agent.memory.estimate_novelty(state) if agent.memory else 0,
-                    "success_rate": agent._episode_success,
-                    "recent_risk": agent._episode_traps,
+                    "success_rate": 1.0 if agent._episode_success else 0.0,
+                    "recent_risk": 1.0 if agent._episode_traps > 0 else 0.0,
                 })
                 narrative_text = agent.narrative_engine.generate(
                     intent=current_intent,
@@ -52,10 +50,9 @@ def run_experiment(agent, env, num_episodes, run_name):
 
         agent.end_episode()
 
-        # Update symbolic self with final traits from the episode
         final_traits = agent.identity.self_gap()
         for trait, delta in final_traits.items():
-            symbolic_self.update_trait(trait, -delta) # Invert gap to update towards ideal
+            symbolic_self.update_trait(trait, -delta)
 
         log_entry = {
             "episode": episode,
@@ -70,6 +67,7 @@ def run_experiment(agent, env, num_episodes, run_name):
                 confidence=world_conf
             ),
             "gap_to_ideal": agent.identity.self_gap(),
+            "ideal_self": agent.identity.ideal_self, # NEW: log ideal self
             "world_fit": {"world": best_world, "confidence": round(world_conf, 3)}
         }
 
@@ -78,6 +76,7 @@ def run_experiment(agent, env, num_episodes, run_name):
 
         print(f"Episode {episode+1}/{num_episodes} finished. Total Reward: {total_reward:.2f}, Steps: {steps}")
         print(f"Final Identity at end of episode: {agent.identity.describe_self()}")
+        print(f"Final Ideal Self: {agent.identity.ideal_self}")
         print("-" * 50)
 
     print(f"Experiment {run_name} completed.")

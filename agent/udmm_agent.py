@@ -31,6 +31,8 @@ class UDMMAgent:
         self._episode_map_gap_delta = 0.0
         self._diag_schema_usage = 0.0
         self._diag_bias_conf = 0.0
+        self._recent_rewards_log = deque(maxlen=self.identity.cfg.ambition_patience * 2)
+        self._recent_success_log = deque(maxlen=self.identity.cfg.ambition_patience * 2)
 
     def select_action(self, state):
         state_key = _hashable_state(state)
@@ -62,7 +64,6 @@ class UDMMAgent:
             self.memory.consolidate()
             self.memory.prioritized_replay(self, steps=256)
 
-        # Get signals for identity update
         ep_novelty = self._episode_novelty
         map_gap_delta = self._episode_map_gap_delta
         ep_reward = self._episode_reward
@@ -72,7 +73,6 @@ class UDMMAgent:
         diag_schema_usage = self._diag_schema_usage
         diag_bias_conf = self._diag_bias_conf
 
-        # Update self-identity traits based on episode experience
         self.identity.update_from_episode(
             reward=ep_reward,
             steps=ep_steps,
@@ -84,7 +84,22 @@ class UDMMAgent:
             bias_confidence=diag_bias_conf,
         )
 
-        # Reset episode-specific diagnostics
+        # NEW: Get the current gap score to be passed to the identity system
+        current_gap_score = self.identity.self_gap_score()
+
+        # NEW: Calculate recent success rate
+        recent_success_rate = sum(1 for s in self._recent_success_log if s) / max(1, len(self._recent_success_log))
+
+        # NEW: Call the ideal-self update function
+        self.identity.update_ideal_self(
+            episode_reward=ep_reward,
+            current_gap_score=current_gap_score,
+            recent_success_rate=recent_success_rate
+        )
+
+        self._recent_rewards_log.append(ep_reward)
+        self._recent_success_log.append(ep_success)
+
         self._episode_novelty = 0.0
         self._episode_map_gap_delta = 0.0
         self._episode_reward = 0.0
@@ -106,13 +121,18 @@ class UDMMAgent:
         if not done:
             future_q = max(self.q.get((next_state_key, a), 0.0) for a in self.actions)
 
+        mods = self.identity.to_action_modifiers()
+
+        intrinsic = 0.0
         if self.use_ltm and self.memory:
             novelty_est = self.memory.estimate_novelty(next_state)
             map_gap_delta = self.memory.update_map_and_get_gap(next_state)
+            intrinsic = mods["novelty_coeff"] * novelty_est + mods["map_gap_coeff"] * max(0.0, map_gap_delta)
+
             self._episode_novelty += novelty_est
             self._episode_map_gap_delta += map_gap_delta
 
-        td_target = reward + self.gamma * future_q
+        td_target = reward + intrinsic + self.gamma * future_q
         td_error = td_target - current_q
         self.q[(state_key, action)] += self.lr * td_error
 
